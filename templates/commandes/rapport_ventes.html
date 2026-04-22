@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+    <h1>Rapport des Ventes</h1>
+    <p>Consultez les statistiques et rapports de ventes du restaurant.</p>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Total Commandes</th>
+                <th>Chiffre d'affaires</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for rapport in rapports %}
+            <tr>
+                <td>{{ rapport.date }}</td>
+                <td>{{ rapport.total_commandes }}</td>
+                <td>{{ rapport.chiffre_affaires }} MAD</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3">Aucune donnée disponible.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %} 

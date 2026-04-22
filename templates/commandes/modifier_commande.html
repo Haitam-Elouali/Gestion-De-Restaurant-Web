@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mx-auto px-6 py-8">
+    <div class="max-w-3xl mx-auto bg-white rounded-lg shadow-md p-8">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-6">Modifier la commande #{{ commande.id }}</h1>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            <div class="space-y-4">
+                {% for field in form %}
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-1">{{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}</label>
+                    {{ field }}
+                    {% if field.help_text %}
+                        <p class="text-xs text-gray-500">{{ field.help_text }}</p>
+                    {% endif %}
+                    {% for error in field.errors %}
+                        <p class="text-xs text-red-500">{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="mt-8 flex justify-between items-center">
+                <a href="{% url 'commandes:serveur_dashboard' %}" class="text-blue-600 hover:underline">&larr; Retour au tableau de bord</a>
+                <button type="submit" class="bg-gold-600 text-gray-900 px-6 py-2 rounded-md hover:bg-gold-500 transition duration-300 font-medium">Enregistrer</button>
+            </div>
+        </form>
+        <hr class="my-8">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Plats de la commande</h2>
+        {% if commande.lignes.all %}
+        <table class="w-full border-separate border-spacing-0 mb-6">
+            <thead>
+                <tr class="bg-gray-100">
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase border-b">Plat</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase border-b">Quantité</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase border-b">Prix unitaire</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase border-b">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ligne in commande.lignes.all %}
+                <tr>
+                    <td class="px-4 py-2 border-b">{{ ligne.plat.nom }}</td>
+                    <td class="px-4 py-2 border-b">{{ ligne.quantite }}</td>
+                    <td class="px-4 py-2 border-b">{{ ligne.prix_unitaire }} DH</td>
+                    <td class="px-4 py-2 border-b">{{ ligne.montant_ligne_formate }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-gray-500 mb-6">Aucun plat dans cette commande.</div>
+        {% endif %}
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Ajouter des plats</h3>
+        <form method="post">
+            {% csrf_token %}
+            <div id="plats-container">
+                <div class="flex space-x-4 items-end plat-row mb-4">
+                    <div class="flex-1">
+                        <label>Plat :</label>
+                        <select name="plat_0" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                            {% for plat in ajouter_plat_form.fields.plat.queryset %}
+                                <option value="{{ plat.id }}">{{ plat.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="w-32">
+                        <label>Quantité :</label>
+                        <input type="number" name="quantite_0" value="1" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                    </div>
+                    <div class="flex-1">
+                        <label>Notes :</label>
+                        <input type="text" name="notes_0" placeholder="Notes spéciales pour ce plat" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                    </div>
+                </div>
+            </div>
+            <button type="button" onclick="ajouterLignePlat()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-500 transition duration-300 font-medium mb-4">Ajouter un plat</button>
+            <div class="mt-8 flex justify-between items-center">
+                <a href="{% url 'commandes:serveur_dashboard' %}" class="text-blue-600 hover:underline">&larr; Retour au tableau de bord</a>
+                <button type="submit" class="bg-gold-600 text-gray-900 px-6 py-2 rounded-md hover:bg-gold-500 transition duration-300 font-medium">Enregistrer</button>
+            </div>
+        </form>
+        <script>
+        let platIndex = 1;
+        function ajouterLignePlat() {
+            const platsContainer = document.getElementById('plats-container');
+            const row = document.createElement('div');
+            row.className = 'flex space-x-4 items-end plat-row mb-4';
+            row.innerHTML = `
+                <div class="flex-1">
+                    <label>Plat :</label>
+                    <select name="plat_${platIndex}" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                        {% for plat in ajouter_plat_form.fields.plat.queryset %}
+                            <option value="{{ plat.id }}">{{ plat.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="w-32">
+                    <label>Quantité :</label>
+                    <input type="number" name="quantite_${platIndex}" value="1" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+                <div class="flex-1">
+                    <label>Notes :</label>
+                    <input type="text" name="notes_${platIndex}" placeholder="Notes spéciales pour ce plat" class="w-full px-4 py-2 border border-gray-300 rounded-md">
+                </div>
+            `;
+            platsContainer.appendChild(row);
+            platIndex++;
+        }
+        </script>
+    </div>
+</div>
+{% endblock %} 
