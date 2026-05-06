@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
-from .models import Manager, Serveur, Cuisinier
+from .models import Manager, Serveur, Caissier
 
 
 class ManagerAdmin(admin.ModelAdmin):
@@ -46,10 +46,10 @@ class ServeurAdmin(admin.ModelAdmin):
     )
 
 
-class CuisinierAdmin(admin.ModelAdmin):
-    """Interface d'administration pour les Cuisiniers"""
-    list_display = ['getNomComplet', 'telephone', 'email', 'salaire_mensuel', 'status', 'date_embauche']
-    list_filter = ['status', 'date_embauche', 'date_creation']
+class CaissierAdmin(admin.ModelAdmin):
+    """Interface d'administration pour les Caissiers"""
+    list_display = ['getNomComplet', 'telephone', 'email', 'salaire_mensuel', 'date_embauche']
+    list_filter = ['date_embauche', 'date_creation']
     search_fields = ['nom', 'prenom', 'email', 'telephone']
     readonly_fields = ['date_creation', 'date_modification', 'date_embauche']
     
@@ -58,7 +58,7 @@ class CuisinierAdmin(admin.ModelAdmin):
             'fields': ('user', 'nom', 'prenom', 'telephone', 'email')
         }),
         ('Informations professionnelles', {
-            'fields': ('salaire_mensuel', 'status')
+            'fields': ('salaire_mensuel',)
         }),
         ('Informations système', {
             'fields': ('date_embauche', 'date_creation', 'date_modification'),
@@ -70,4 +70,4 @@ class CuisinierAdmin(admin.ModelAdmin):
 # Enregistrement des modèles dans l'admin
 admin.site.register(Manager, ManagerAdmin)
 admin.site.register(Serveur, ServeurAdmin)
-admin.site.register(Cuisinier, CuisinierAdmin)
+admin.site.register(Caissier, CaissierAdmin)

@@ -61,6 +61,16 @@ class Commande(models.Model):
         verbose_name="Employé responsable"
     )
     
+    # Relation avec Table pour RG04
+    table = models.ForeignKey(
+        'core.Table',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='commandes',
+        verbose_name="Table assignée"
+    )
+    
     # Attributs additionnels pour le suivi
     notes = models.TextField(blank=True, null=True, verbose_name="Notes")
     montant_total = models.DecimalField(
@@ -77,6 +87,15 @@ class Commande(models.Model):
     
     def __str__(self):
         return f"Commande #{self.id} - {self.nom_clt} ({self.get_status_display()})"
+    
+    def save(self, *args, **kwargs):
+        """RG04: Lorsqu'une commande est assignée à une table, la table passe automatiquement à Occupée"""
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        # RG04: Si une table est assignée, la marquer comme occupée
+        if self.table and self.table.statut != 'occupee':
+            self.table.assigner_commande(self)
     
     def calculer_total(self):
         """Calcule le montant total de la commande"""
@@ -138,12 +157,37 @@ class LigneDeCommande(models.Model):
         return f"{self.quantite}x {self.plat.nom} - Commande #{self.commande.id}"
     
     def save(self, *args, **kwargs):
-        """Surcharge de save pour calculer automatiquement le prix unitaire"""
+        """RG10: Décrémente les stocks + calcul du prix unitaire"""
+        is_new = self.pk is None
+        
+        # Définir le prix unitaire si non défini
         if not self.prix_unitaire:
             self.prix_unitaire = self.plat.prix
+        
         super().save(*args, **kwargs)
+        
+        # RG10: Si nouvelle ligne de commande, décrémenter les stocks des ingrédients
+        if is_new:
+            self.decrementer_stocks()
+        
         # Recalculer le total de la commande
         self.commande.calculer_total()
+    
+    def decrementer_stocks(self):
+        """RG10: Décrémente les stocks des ingrédients nécessaires pour ce plat"""
+        from menus.models import PlatIngredient
+        
+        # Récupérer les ingrédients nécessaires pour ce plat
+        plat_ingredients = PlatIngredient.objects.filter(plat=self.plat)
+        
+        for pi in plat_ingredients:
+            quantite_a_decrementer = pi.quantite_necessaire * self.quantite
+            if not pi.ingredient.decrementer_stock(quantite_a_decrementer):
+                # Stock insuffisant - marquer le plat comme indisponible (RG11)
+                self.plat.disponible = False
+                self.plat.save()
+                return False
+        return True
     
     @property
     def montant_ligne(self):

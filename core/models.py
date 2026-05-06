@@ -94,41 +94,104 @@ class Serveur(Employe):
         return f"Serveur {self.getNomComplet()} peut modifier les prix"
 
 
-class Cuisinier(Employe):
+class Caissier(Employe):
     """
-    Modèle pour les cuisiniers du restaurant
-    Hérite de Employe et ajoute des fonctionnalités de cuisine
+    Modèle pour les caissiers du restaurant
+    Hérite de Employe et ajoute des fonctionnalités de caisse
     """
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cuisinier_profile')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='caissier_profile')
     
-    # Attributs publics (+)
-    status = models.CharField(
-        max_length=50, 
-        default="disponible",
-        choices=[
-            ('disponible', 'Disponible'),
-            ('occupe', 'Occupé'),
-            ('pause', 'En pause'),
-        ],
+    class Meta:
+        verbose_name = "Caissier"
+        verbose_name_plural = "Caissiers"
+    
+    def GererPaiements(self):
+        """Méthode pour gérer les paiements"""
+        return f"Caissier {self.getNomComplet()} gère les paiements"
+    
+    def Encaisser(self):
+        """Méthode pour encaisser"""
+        return f"Caissier {self.getNomComplet()} encaisse"
+    
+    def VoirHistoriqueVentes(self):
+        """Méthode pour voir l'historique des ventes"""
+        return f"Caissier {self.getNomComplet()} consulte l'historique des ventes"
+
+
+class Administrateur(Employe):
+    """
+    Modèle pour les administrateurs du système
+    Hérite de Employe et a tous les droits de gestion
+    Seul l'administrateur peut créer/supprimer des comptes Manager (RG02)
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='admin_profile')
+    
+    class Meta:
+        verbose_name = "Administrateur"
+        verbose_name_plural = "Administrateurs"
+    
+    def peutGererManagers(self):
+        """Vérifie si l'admin peut gérer les managers - RG02"""
+        return True
+    
+    def peutGererTousUtilisateurs(self):
+        """L'admin peut gérer tous les types d'utilisateurs"""
+        return True
+
+
+class Table(models.Model):
+    """
+    Modèle pour les tables du restaurant
+    RG04: Une table passe automatiquement à l'état "Occupée" dès qu'une commande lui est assignée
+    RG09: Une table ne peut être libérée (état "Libre") qu'après la validation du paiement total de la facture
+    """
+    STATUT_CHOICES = [
+        ('libre', 'Libre'),
+        ('occupee', 'Occupée'),
+        ('reservee', 'Réservée'),
+    ]
+    
+    numero = models.CharField(max_length=10, verbose_name="Numéro de table")
+    capacite = models.PositiveIntegerField(default=4, verbose_name="Capacité")
+    statut = models.CharField(
+        max_length=20,
+        choices=STATUT_CHOICES,
+        default='libre',
         verbose_name="Statut"
+    )
+    nombre_clients = models.PositiveIntegerField(default=0, verbose_name="Nombre de clients")
+    commande_actuelle = models.ForeignKey(
+        'commandes.Commande',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='table_assignee',
+        verbose_name="Commande actuelle"
     )
     
     class Meta:
-        verbose_name = "Cuisinier"
-        verbose_name_plural = "Cuisiniers"
+        verbose_name = "Table"
+        verbose_name_plural = "Tables"
     
-    def RecevoirCmd(self):
-        """Méthode pour recevoir une commande"""
-        return f"Cuisinier {self.getNomComplet()} reçoit une commande"
+    def __str__(self):
+        return f"Table {self.numero} ({self.get_statut_display()})"
     
-    def MarquerPlatPrepare(self):
-        """Méthode pour marquer un plat comme préparé"""
-        return f"Cuisinier {self.getNomComplet()} marque un plat comme préparé"
+    def assigner_commande(self, commande):
+        """RG04: Assigne une commande et passe automatiquement à Occupée"""
+        self.commande_actuelle = commande
+        self.statut = 'occupee'
+        self.save()
     
-    def ConsulterListeCmd_a_Prepare(self):
-        """Méthode pour consulter la liste des commandes à préparer"""
-        return f"Cuisinier {self.getNomComplet()} consulte les commandes à préparer"
+    def liberer(self):
+        """RG09: Ne libère la table que si la commande est payée"""
+        if self.commande_actuelle and self.commande_actuelle.status == 'payee':
+            self.commande_actuelle = None
+            self.statut = 'libre'
+            self.nombre_clients = 0
+            self.save()
+            return True
+        return False
     
-    def SignalerRuptureStock(self):
-        """Méthode pour signaler une rupture de stock"""
-        return f"Cuisinier {self.getNomComplet()} signale une rupture de stock"
+    def est_disponible(self):
+        """Vérifie si la table est disponible"""
+        return self.statut == 'libre'
