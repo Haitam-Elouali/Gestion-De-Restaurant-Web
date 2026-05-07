@@ -28,6 +28,7 @@ interface Commande {
   montant_total: number
   lignes: LigneCommande[]
   table?: Table
+  date_creation: string
 }
 
 interface LigneCommande {
@@ -117,7 +118,7 @@ const Serveur: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        nom_clt: newOrder.nom_clt,
+        nom_clt: `Table ${newOrder.table_id}`,
         type: 'sur_place',
         table_id: newOrder.table_id,
         plats: platIds.map(id => ({
@@ -142,7 +143,10 @@ const Serveur: React.FC = () => {
               setShowNewOrderForm(false)
               setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
               setSelectedPlats({})
-              fetchData()
+              // Rafraîchir les données pour mettre à jour l'état des tables
+              setTimeout(() => {
+                fetchData()
+              }, 200)
             })
           }
         }
@@ -172,15 +176,77 @@ const Serveur: React.FC = () => {
   }
 
   const supprimerHistorique = () => {
-    setCommandesServies(new Set())
-    setCommandesAnnulees(new Set())
+    if (confirm('Êtes-vous sûr de vouloir supprimer l\'historique des commandes ? Cette action est irréversible.')) {
+      // Appeler l'API pour supprimer toutes les commandes dans la BD
+      fetch('/api/commandes/supprimer-toutes/', {
+        method: 'POST',
+        credentials: 'include'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            // Vider les états locaux
+            setCommandes([])
+            setCommandesServies(new Set())
+            setCommandesAnnulees(new Set())
+            setSelectedPlats({})
+            setShowNewOrderForm(false)
+            setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
+            alert(data.message)
+          } else {
+            alert('Erreur lors de la suppression: ' + data.message)
+          }
+        })
+        .catch(error => {
+          console.error('Erreur:', error)
+          alert('Erreur lors de la suppression des commandes')
+        })
+    }
+  }
+
+  const libererToutesTables = () => {
+    if (confirm('Êtes-vous sûr de vouloir libérer toutes les tables ? Cette action est irréversible.')) {
+      fetch('/api/commandes/liberer-toutes-tables/', {
+        method: 'POST',
+        credentials: 'include'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            alert(data.message)
+            fetchData() // Rafraîchir les données pour mettre à jour l'état des tables
+          } else {
+            alert('Erreur lors de la libération: ' + data.message)
+          }
+        })
+        .catch(error => {
+          console.error('Erreur:', error)
+          alert('Erreur lors de la libération des tables')
+        })
+    }
+  }
+
+  const supprimerToutesCommandes = () => {
+    if (confirm('Êtes-vous sûr de vouloir supprimer TOUTES les commandes ? Cette action est irréversible.')) {
+      // Vider toutes les listes de commandes
+      setCommandes([])
+      setCommandesServies(new Set())
+      setCommandesAnnulees(new Set())
+      setSelectedPlats({})
+      setShowNewOrderForm(false)
+      setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
+    }
   }
 
   const commandesEnCours = commandes.filter(c =>
     c.status !== 'payee' && !commandesServies.has(c.id) && !commandesAnnulees.has(c.id)
   )
-  // Historique: commandes servies et annulées par le serveur
-  const commandesHistory = commandes.filter(c => commandesServies.has(c.id) || commandesAnnulees.has(c.id))
+  // Historique: commandes servies et annulées par le serveur ET les commandes payées
+  const commandesHistory = commandes.filter(c => 
+    commandesServies.has(c.id) || 
+    commandesAnnulees.has(c.id) || 
+    c.status === 'payee'
+  )
 
   return (
     <div className="w-full min-h-screen bg-dark">
@@ -214,16 +280,24 @@ const Serveur: React.FC = () => {
         <div className="flex gap-6">
           {/* Left side - Tables */}
           <div className="w-1/2 bg-card rounded-xl p-6 border border-card-light">
-            <h2 className="text-2xl font-bold text-white mb-6">Visuel Global des Tables</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Visuel Global des Tables</h2>
+              <button
+                onClick={libererToutesTables}
+                className="flex items-center px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded hover:bg-yellow-500/30 transition-colors text-xs"
+                title="Libérer toutes les tables"
+              >
+                <X size={14} className="mr-1" />
+                Libérer toutes
+              </button>
+            </div>
             
             {/* Tables Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
               {tables.map((table) => {
-                // Forcer la table 1 a etre libre
-                const isTable1 = table.numero === '1'
-                const statut = isTable1 ? 'libre' : table.statut
-                const nombre_clients = isTable1 ? 0 : table.nombre_clients
-                const statut_display = isTable1 ? 'Libre' : table.statut_display
+                const statut = table.statut
+                const nombre_clients = table.nombre_clients
+                const statut_display = table.statut_display
                 return (
                   <div
                     key={table.id}
@@ -279,27 +353,17 @@ const Serveur: React.FC = () => {
 
               {showNewOrderForm && (
                 <form onSubmit={handleCreateOrder} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <select
+                  <select
                       value={newOrder.table_id}
                       onChange={e => setNewOrder({...newOrder, table_id: e.target.value})}
-                      className="px-4 py-2 bg-card border border-card-light rounded-lg text-white"
+                      className="w-full px-4 py-2 bg-card border border-card-light rounded-lg text-white"
                       required
                     >
-                      <option value="">Selectionner une table</option>
-                      {tables.filter(t => t.statut === 'libre' || t.numero === '1').map(t => (
+                      <option value="">Sélectionner une table</option>
+                      {tables.filter(t => t.statut === 'libre').map(t => (
                         <option key={t.id} value={t.id}>Table {t.numero} (Cap: {t.capacite})</option>
                       ))}
                     </select>
-                    <input
-                      type="text"
-                      placeholder="Nom du client"
-                      value={newOrder.nom_clt}
-                      onChange={e => setNewOrder({...newOrder, nom_clt: e.target.value})}
-                      className="px-4 py-2 bg-card border border-card-light rounded-lg text-white"
-                      required
-                    />
-                  </div>
                   <input
                     type="number"
                     placeholder="Nombre de clients"
@@ -436,7 +500,7 @@ const Serveur: React.FC = () => {
                     title="Supprimer l'historique"
                   >
                     <X size={14} className="mr-1" />
-                    Supprimer
+                    Supprimer l'historique
                   </button>
                 )}
               </div>
@@ -447,7 +511,7 @@ const Serveur: React.FC = () => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <span className="text-white font-medium">#{cmd.id}</span>
-                          <span className="text-text-gray">- {cmd.nom_clt}</span>
+                          <span className="text-text-gray">- {new Date(cmd.date_creation).toLocaleDateString('fr-FR')}</span>
                         </div>
                         {cmd.table && <p className="text-sm text-text-gray mt-1">Table {cmd.table.numero}</p>}
                         {/* Afficher les plats */}

@@ -176,10 +176,16 @@ class Table(models.Model):
     def __str__(self):
         return f"Table {self.numero} ({self.get_statut_display()})"
     
-    def assigner_commande(self, commande):
+    def assigner_commande(self, commande, nombre_clients=None):
         """RG04: Assigne une commande et passe automatiquement à Occupée"""
+        # RG05: Vérifier que le nombre de clients ne dépasse pas la capacité
+        if nombre_clients and nombre_clients > self.capacite:
+            raise ValueError(f"RG05: Le nombre de clients ({nombre_clients}) ne peut pas dépasser la capacité de la table ({self.capacite}).")
+        
         self.commande_actuelle = commande
         self.statut = 'occupee'
+        if nombre_clients:
+            self.nombre_clients = nombre_clients
         self.save()
     
     def liberer(self):

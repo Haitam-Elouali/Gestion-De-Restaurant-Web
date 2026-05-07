@@ -181,3 +181,32 @@ def api_ajouter_ingredient_plat(request, plat_id):
         'success': True,
         'message': f'{ingredient.nom} ajouté au plat {plat.nom}.',
     })
+
+
+@csrf_exempt
+def api_verifier_disponibilite_plats(request):
+    """API: vérifier et mettre à jour la disponibilité de tous les plats - RG11"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+    
+    plats_mis_a_jour = []
+    plats_indisponibles = []
+    
+    for plat in Plat.objects.all():
+        if plat.verifier_disponibilite_ingredients():
+            if not plat.disponible:
+                plat.disponible = True
+                plat.save()
+                plats_mis_a_jour.append(plat.nom)
+        else:
+            if plat.disponible:
+                plat.disponible = False
+                plat.save()
+                plats_indisponibles.append(plat.nom)
+    
+    return JsonResponse({
+        'success': True,
+        'plats_rendus_disponibles': plats_mis_a_jour,
+        'plats_rendus_indisponibles': plats_indisponibles,
+        'message': f'RG11: {len(plats_mis_a_jour)} plats rendus disponibles, {len(plats_indisponibles)} plats rendus indisponibles.'
+    })

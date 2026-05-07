@@ -2,11 +2,33 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { User } from '../types'
 
+interface RestaurantSettings {
+  nom: string
+  adresse: string
+  telephone: string
+}
+
 const Home: React.FC = () => {
   const [user, setUser] = useState<User | null>(null)
+  const [restaurantSettings, setRestaurantSettings] = useState<RestaurantSettings>({
+    nom: 'KOOL.MA',
+    adresse: '123 Rue de Paris, Casablanca',
+    telephone: '+212 5XX-XXXXXX'
+  })
   const navigate = useNavigate()
 
   useEffect(() => {
+    // Récupérer les paramètres du restaurant depuis localStorage
+    const savedSettings = localStorage.getItem('restaurantSettings')
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings)
+        setRestaurantSettings(settings)
+      } catch (e) {
+        console.error('Erreur lors de la récupération des paramètres:', e)
+      }
+    }
+
     fetch('/api/auth/status/', { credentials: 'include' })
       .then(res => res.json())
       .then((data: User) => {
@@ -40,6 +62,16 @@ const Home: React.FC = () => {
             </div>
           </div>
         </section>
+
+        {/* Informations du restaurant */}
+        <div className="absolute bottom-0 left-0 right-0 text-center py-6 px-4">
+          <div className="text-gray-600 text-sm space-y-1">
+            <p className="font-medium">{restaurantSettings.nom}</p>
+            <p>{restaurantSettings.adresse}</p>
+            <p>{restaurantSettings.telephone}</p>
+            <p className="text-xs text-gray-500 mt-2"> 2024 {restaurantSettings.nom} - Tous droits réservés</p>
+          </div>
+        </div>
       </div>
     </div>
   )

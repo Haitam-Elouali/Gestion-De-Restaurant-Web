@@ -8,14 +8,22 @@ from .models import Manager, Serveur, Caissier, Administrateur, Table
 
 def get_user_role(user):
     """Helper function pour déterminer le rôle de l'utilisateur"""
-    if hasattr(user, 'admin_profile'):
-        return 'admin'
-    elif hasattr(user, 'manager_profile'):
-        return 'manager'
-    elif hasattr(user, 'serveur_profile'):
-        return 'serveur'
-    elif hasattr(user, 'caissier_profile'):
-        return 'caissier'
+    try:
+        from .models import Manager, Serveur, Caissier, Administrateur
+        
+        # Vérifier directement avec les modèles (plus fiable)
+        if Administrateur.objects.filter(user=user).exists():
+            return 'admin'
+        elif Manager.objects.filter(user=user).exists():
+            return 'manager'
+        elif Serveur.objects.filter(user=user).exists():
+            return 'serveur'
+        elif Caissier.objects.filter(user=user).exists():
+            return 'caissier'
+            
+    except Exception as e:
+        print(f"Erreur dans get_user_role: {e}")
+    
     return None
 
 
@@ -83,6 +91,7 @@ def api_employes(request):
                 'prenom': m.prenom,
                 'telephone': m.telephone,
                 'email': m.email,
+                'salaire': float(m.salaire_mensuel),
                 'salaire_mensuel': float(m.salaire_mensuel),
                 'date_embauche': str(m.date_embauche),
                 'type': 'manager',
@@ -96,6 +105,7 @@ def api_employes(request):
             'prenom': s.prenom,
             'telephone': s.telephone,
             'email': s.email,
+            'salaire': float(s.salaire_mensuel),
             'salaire_mensuel': float(s.salaire_mensuel),
             'date_embauche': str(s.date_embauche),
             'type': 'serveur',
@@ -109,6 +119,7 @@ def api_employes(request):
             'prenom': c.prenom,
             'telephone': c.telephone,
             'email': c.email,
+            'salaire': float(c.salaire_mensuel),
             'salaire_mensuel': float(c.salaire_mensuel),
             'date_embauche': str(c.date_embauche),
             'type': 'caissier',
@@ -123,6 +134,7 @@ def api_employes(request):
                 'prenom': a.prenom,
                 'telephone': a.telephone,
                 'email': a.email,
+                'salaire': float(a.salaire_mensuel),
                 'salaire_mensuel': float(a.salaire_mensuel),
                 'date_embauche': str(a.date_embauche),
                 'type': 'admin',
@@ -166,11 +178,28 @@ def api_create_employe(request):
     
     try:
         from django.contrib.auth.models import User
+        username = data.get('username')
+        email = data.get('email')
+        
+        # Vérifier si le username existe déjà
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({
+                'success': False,
+                'message': f'Le nom d\'utilisateur "{username}" est déjà utilisé.'
+            }, status=400)
+        
+        # Vérifier si l'email existe déjà
+        if User.objects.filter(email=email).exists():
+            return JsonResponse({
+                'success': False,
+                'message': f'L\'email "{email}" est déjà utilisé.'
+            }, status=400)
+        
         # Créer l'utilisateur Django
         user = User.objects.create_user(
-            username=data.get('username'),
+            username=username,
             password=data.get('password'),
-            email=data.get('email')
+            email=email
         )
         
         # Créer le profil employé selon le type
@@ -238,24 +267,211 @@ def api_delete_employe(request, employe_id):
     
     try:
         from django.contrib.auth.models import User
+        from django.db import connection
         
-        # Trouver et supprimer l'employé
-        if employe_type == 'manager':
-            employe = Manager.objects.get(id=employe_id)
-        elif employe_type == 'serveur':
-            employe = Serveur.objects.get(id=employe_id)
-        elif employe_type == 'caissier':
-            employe = Caissier.objects.get(id=employe_id)
-        elif employe_type == 'admin':
-            employe = Administrateur.objects.get(id=employe_id)
-        else:
-            return JsonResponse({'success': False, 'message': 'Type d\'employé inconnu.'})
+        # Trouver et supprimer l'employé avec gestion d'erreur spécifique
+        employe = None
+        user_id = None
+        try:
+            if employe_type == 'manager':
+                employe = Manager.objects.get(id=employe_id)
+                user_id = employe.user_id
+            elif employe_type == 'serveur':
+                employe = Serveur.objects.get(id=employe_id)
+                user_id = employe.user_id
+            elif employe_type == 'caissier':
+                employe = Caissier.objects.get(id=employe_id)
+                user_id = employe.user_id
+            elif employe_type == 'admin':
+                employe = Administrateur.objects.get(id=employe_id)
+                user_id = employe.user_id
+            else:
+                return JsonResponse({'success': False, 'message': 'Type d\'employé inconnu.'})
+        except Manager.DoesNotExist:
+            return JsonResponse({'success': False, 'message': f'Aucun manager trouvé avec l\'ID {employe_id}.'})
+        except Serveur.DoesNotExist:
+            return JsonResponse({'success': False, 'message': f'Aucun serveur trouvé avec l\'ID {employe_id}.'})
+        except Caissier.DoesNotExist:
+            return JsonResponse({'success': False, 'message': f'Aucun caissier trouvé avec l\'ID {employe_id}.'})
+        except Administrateur.DoesNotExist:
+            return JsonResponse({'success': False, 'message': f'Aucun administrateur trouvé avec l\'ID {employe_id}.'})
         
-        user = employe.user
+        # Supprimer l'employé d'abord
         employe.delete()
-        user.delete()
+        
+        # Puis supprimer l'utilisateur avec SQL direct pour éviter les dépendances
+        if user_id:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM auth_user WHERE id = %s", [user_id])
         
         return JsonResponse({'success': True, 'message': 'Employé supprimé avec succès.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@csrf_exempt
+def api_diagnostic_employes(request):
+    """API: diagnostic des employés et utilisateurs (POST) - pour débogage"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from django.contrib.auth.models import User
+        from django.db import connection
+        
+        # Récupérer tous les utilisateurs Django
+        users = []
+        for user in User.objects.all():
+            users.append({
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'is_active': user.is_active,
+                'date_joined': str(user.date_joined)
+            })
+        
+        # Récupérer tous les profils d'employés
+        managers = []
+        for m in Manager.objects.all():
+            managers.append({
+                'id': m.id,
+                'nom': m.nom,
+                'prenom': m.prenom,
+                'user_id': m.user_id,
+                'user_username': m.user.username if m.user else None
+            })
+        
+        serveurs = []
+        for s in Serveur.objects.all():
+            serveurs.append({
+                'id': s.id,
+                'nom': s.nom,
+                'prenom': s.prenom,
+                'user_id': s.user_id,
+                'user_username': s.user.username if s.user else None
+            })
+        
+        caissiers = []
+        for c in Caissier.objects.all():
+            caissiers.append({
+                'id': c.id,
+                'nom': c.nom,
+                'prenom': c.prenom,
+                'user_id': c.user_id,
+                'user_username': c.user.username if c.user else None
+            })
+        
+        admins = []
+        for a in Administrateur.objects.all():
+            admins.append({
+                'id': a.id,
+                'nom': a.nom,
+                'prenom': a.prenom,
+                'user_id': a.user_id,
+                'user_username': a.user.username if a.user else None
+            })
+        
+        return JsonResponse({
+            'users': users,
+            'managers': managers,
+            'serveurs': serveurs,
+            'caissiers': caissiers,
+            'admins': admins,
+            'total_users': len(users),
+            'total_employes': len(managers) + len(serveurs) + len(caissiers) + len(admins)
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@csrf_exempt
+def api_creer_caissier_defaut(request):
+    """API: créer le caissier par défaut (POST)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from django.contrib.auth.models import User
+        
+        # Vérifier si le caissier par défaut existe déjà
+        if User.objects.filter(username='caissier').exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'Le caissier par défaut existe déjà.'
+            })
+        
+        # Créer l'utilisateur Django
+        user = User.objects.create_user(
+            username='caissier',
+            password='caissier123',
+            email='caissier@koolma.ma'
+        )
+        
+        # Créer le profil caissier
+        caissier = Caissier.objects.create(
+            user=user,
+            nom='Caissier',
+            prenom='Défaut',
+            telephone='0000000000',
+            email='caissier@koolma.ma',
+            salaire_mensuel=3000
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Caissier par défaut créé avec succès.',
+            'username': 'caissier',
+            'password': 'caissier123'
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@csrf_exempt
+def api_nettoyer_utilisateurs_orphelins(request):
+    """API: nettoyer les utilisateurs orphelins (POST)"""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    user_role = get_user_role(request.user)
+    if user_role != 'admin':
+        return JsonResponse({'success': False, 'message': 'Seul l\'administrateur peut nettoyer les utilisateurs orphelins.'}, status=403)
+    
+    try:
+        from django.contrib.auth.models import User
+        from django.db import connection
+        
+        # Récupérer tous les user_id des profils employés
+        user_ids_with_profiles = set()
+        for m in Manager.objects.all():
+            user_ids_with_profiles.add(m.user_id)
+        for s in Serveur.objects.all():
+            user_ids_with_profiles.add(s.user_id)
+        for c in Caissier.objects.all():
+            user_ids_with_profiles.add(c.user_id)
+        for a in Administrateur.objects.all():
+            user_ids_with_profiles.add(a.user_id)
+        
+        # Trouver les utilisateurs orphelins
+        orphan_users = User.objects.filter(~models.Q(id__in=user_ids_with_profiles))
+        
+        # Supprimer les utilisateurs orphelins
+        deleted_count = 0
+        for user in orphan_users:
+            user.delete()
+            deleted_count += 1
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{deleted_count} utilisateur(s) orphelin(s) supprimé(s) avec succès.',
+            'deleted_count': deleted_count
+        })
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)})
 

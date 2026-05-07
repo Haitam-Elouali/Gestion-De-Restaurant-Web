@@ -113,6 +113,25 @@ class Commande(models.Model):
     def est_livraison(self):
         """Vérifie si c'est une commande de livraison"""
         return self.type == 'livraison'
+    
+    @property
+    def duree_service(self):
+        """SERVEUR4: Calcule la durée de service en minutes"""
+        from django.utils import timezone
+        now = timezone.now()
+        diff = now - self.date_creation_h
+        return int(diff.total_seconds() / 60)
+    
+    @property
+    def duree_formatee(self):
+        """SERVEUR4: Retourne la durée formatée pour l'affichage"""
+        duree = self.duree_service
+        if duree < 60:
+            return f"{duree} min"
+        else:
+            heures = duree // 60
+            minutes = duree % 60
+            return f"{heures}h {minutes}min"
 
 
 class LigneDeCommande(models.Model):

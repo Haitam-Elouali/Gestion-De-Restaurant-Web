@@ -22,7 +22,7 @@ def api_tables(request):
             'capacite': table.capacite,
             'statut': table.statut,
             'statut_display': table.get_statut_display(),
-            'nombre_clients': table.nombre_clients,
+            'nombre_clients': table.nombre_clients or 0,
             'commande_actuelle': {
                 'id': table.commande_actuelle.id,
                 'nom_clt': table.commande_actuelle.nom_clt,
@@ -76,7 +76,7 @@ def api_assigner_table(request, table_id):
             'numero': table.numero,
             'statut': table.statut,
             'statut_display': table.get_statut_display(),
-            'nombre_clients': table.nombre_clients,
+            'nombre_clients': table.nombre_clients or 0,
         }
     })
 

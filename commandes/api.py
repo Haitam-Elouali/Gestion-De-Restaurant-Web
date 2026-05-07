@@ -36,6 +36,8 @@ def api_commandes(request):
             'nombre_plats': cmd.nombre_plats,
             'employe': cmd.employe.username if cmd.employe else None,
             'lignes': lignes,
+            'duree_service': cmd.duree_service,
+            'duree_formatee': cmd.duree_formatee,
         })
     return JsonResponse({'commandes': commandes})
 
@@ -69,13 +71,15 @@ def api_commande_detail(request, commande_id):
         'employe': cmd.employe.username if cmd.employe else None,
         'notes': cmd.notes,
         'lignes': lignes,
+        'duree_service': cmd.duree_service,
+        'duree_formatee': cmd.duree_formatee,
     }
     return JsonResponse(data)
 
 
 @csrf_exempt
 def api_nouvelle_commande(request):
-    """API: creer une nouvelle commande (POST)"""
+    """API: creer une nouvelle commande (POST) - RG06: Validation impossible sans produit"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
@@ -83,18 +87,56 @@ def api_nouvelle_commande(request):
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
 
     data = json.loads(request.body)
-    cmd = Commande.objects.create(
-        nom_clt=data.get('nom_clt', ''),
-        type=data.get('type', 'sur_place_generique'),
-        adresse_liv=data.get('adresse_liv', ''),
-        notes=data.get('notes', ''),
-        employe=request.user,
-    )
-    return JsonResponse({
-        'success': True,
-        'commande_id': cmd.id,
-        'message': 'Commande creee avec succes.',
-    })
+    plats = data.get('plats', [])
+    table_id = data.get('table_id')
+    
+    # RG06: Une commande ne peut être validée si aucun produit n'est sélectionné
+    if not plats:
+        return JsonResponse({
+            'success': False,
+            'message': 'RG06: Une commande doit contenir au moins un produit.',
+        }, status=400)
+    
+    try:
+        # Créer la commande
+        cmd = Commande.objects.create(
+            nom_clt=data.get('nom_clt', ''),
+            type=data.get('type', 'sur_place_generique'),
+            adresse_liv=data.get('adresse_liv', ''),
+            notes=data.get('notes', ''),
+            employe=request.user,
+        )
+        
+        # Ajouter les plats à la commande
+        from .models import LigneDeCommande
+        for plat_data in plats:
+            plat = Plat.objects.get(id=plat_data['plat_id'])
+            LigneDeCommande.objects.create(
+                commande=cmd,
+                plat=plat,
+                quantite=plat_data.get('quantite', 1),
+                notes=plat_data.get('notes', ''),
+            )
+        
+        # RG04: Assigner la table si spécifiée
+        if table_id:
+            from core.models import Table
+            table = Table.objects.get(id=table_id)
+            cmd.table = table
+            cmd.save()
+            # La table passe automatiquement à 'occupée' via la méthode save() du modèle
+        
+        # RG07: Le montant est calculé automatiquement via les lignes de commande
+        cmd.calculer_total()
+        
+        return JsonResponse({
+            'success': True,
+            'commande_id': cmd.id,
+            'montant_total': float(cmd.montant_total),
+            'message': 'Commande créée avec succès.',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
 
 @csrf_exempt
@@ -129,7 +171,7 @@ def api_ajouter_plat_commande(request, commande_id):
 
 @csrf_exempt
 def api_modifier_statut_commande(request, commande_id):
-    """API: modifier le statut d'une commande (POST)"""
+    """API: modifier le statut d'une commande (POST) - RG09: Libération table après paiement"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
@@ -141,11 +183,26 @@ def api_modifier_statut_commande(request, commande_id):
     nouveau_statut = data.get('statut')
 
     if nouveau_statut in dict(Commande.STATUT_CHOICES):
+        ancien_statut = cmd.status
         cmd.status = nouveau_statut
         cmd.save()
+        
+        # RG09: Si la commande passe à 'payee', vérifier si on peut libérer la table
+        if nouveau_statut == 'payee' and cmd.table:
+            if cmd.table.liberer():
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Statut modifié: {cmd.get_status_display()}. Table {cmd.table.numero} libérée (RG09).",
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'message': f"Statut modifié: {cmd.get_status_display()}. Table non libérée (conditions non remplies).",
+                })
+        
         return JsonResponse({
             'success': True,
-            'message': f"Statut modifie: {cmd.get_status_display()}",
+            'message': f"Statut modifié: {cmd.get_status_display()}",
         })
     return JsonResponse({'success': False, 'message': 'Statut invalide.'})
 
@@ -167,3 +224,65 @@ def api_supprimer_ligne(request, ligne_id):
         'success': True,
         'total': float(cmd.montant_total),
     })
+
+
+@csrf_exempt
+def api_supprimer_commandes(request):
+    """API: supprimer toutes les commandes (POST)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+
+    try:
+        # Supprimer toutes les commandes sans vérifier les factures
+        from django.db import connection
+        with connection.cursor() as cursor:
+            # Supprimer les lignes de commande d'abord
+            cursor.execute("DELETE FROM commandes_lignedecommande")
+            # Puis supprimer les commandes
+            cursor.execute("DELETE FROM commandes_commande")
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Toutes les commandes ont été supprimées avec succès.'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Erreur lors de la suppression: {str(e)}'
+        }, status=500)
+
+
+@csrf_exempt
+def api_liberer_toutes_tables(request):
+    """API: libérer toutes les tables manuellement (POST)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+
+    try:
+        from core.models import Table
+        tables = Table.objects.all()
+        tables_liberees = 0
+        
+        for table in tables:
+            if table.statut != 'libre':
+                table.statut = 'libre'
+                table.nombre_clients = 0
+                table.commande_actuelle = None
+                table.save()
+                tables_liberees += 1
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'{tables_liberees} table(s) ont été libérées avec succès.'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Erreur lors de la libération: {str(e)}'
+        }, status=500)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, User as UserIcon, Settings, Store, CreditCard, LogOut, UserPlus, Trash2, Edit, Plus, Minus, Menu } from 'lucide-react'
+import { Users, User as UserIcon, Settings, Store, CreditCard, LogOut, UserPlus, Trash2, Edit, Plus, Minus, Menu, AlertCircle } from 'lucide-react'
 import { User } from '../types'
 
 const Admin: React.FC = () => {
@@ -14,6 +14,16 @@ const Admin: React.FC = () => {
   const [employes, setEmployes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [restaurantSettings, setRestaurantSettings] = useState({
+    nom: 'KOOL.MA',
+    adresse: '123 Rue de Paris, Casablanca',
+    telephone: '+212 5XX-XXXXXX'
+  })
+  const [caisseSettings, setCaisseSettings] = useState({
+    tva: 20,
+    devise: 'MAD',
+    impressionAuto: true
+  })
   const [newEmploye, setNewEmploye] = useState({
     nom: '',
     prenom: '',
@@ -49,16 +59,21 @@ const Admin: React.FC = () => {
     fetch('/api/employes/', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
+        console.log('Données employés reçues:', data)
         const allEmployes = [
           ...(data.admins || []).map((e: any) => ({ ...e, role: 'admin' })),
           ...(data.managers || []).map((e: any) => ({ ...e, role: 'manager' })),
           ...(data.serveurs || []).map((e: any) => ({ ...e, role: 'serveur' })),
           ...(data.caissiers || []).map((e: any) => ({ ...e, role: 'caissier' }))
         ]
+        console.log('Employés traités:', allEmployes)
         setEmployes(allEmployes)
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(error => {
+        console.error('Erreur lors de la récupération des employés:', error)
+        setLoading(false)
+      })
   }
 
   const fetchTables = () => {
@@ -79,11 +94,17 @@ const Admin: React.FC = () => {
 
   const handleCreateEmploye = (e: React.FormEvent) => {
     e.preventDefault()
+    // Mapper les données pour correspondre à l'API backend
+    const employeData = {
+      ...newEmploye,
+      type: newEmploye.role,
+      salaire_mensuel: newEmploye.salaire || 0
+    }
     fetch('/api/employes/create/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(newEmploye)
+      body: JSON.stringify(employeData)
     })
       .then(res => res.json())
       .then(data => {
@@ -94,7 +115,10 @@ const Admin: React.FC = () => {
             nom: '', prenom: '', email: '', telephone: '',
             role: 'serveur', username: '', password: '', salaire: ''
           })
-          fetchEmployes()
+          // Forcer le rafraîchissement immédiat
+          setTimeout(() => {
+            fetchEmployes()
+          }, 100)
           setTimeout(() => setMessage(''), 3000)
         } else {
           setMessage(data.message || 'Erreur lors de la création')
@@ -116,7 +140,15 @@ const Admin: React.FC = () => {
           setMessage('Employé supprimé avec succès !')
           fetchEmployes()
           setTimeout(() => setMessage(''), 3000)
+        } else {
+          setMessage(data.message || 'Erreur lors de la suppression')
+          setTimeout(() => setMessage(''), 3000)
         }
+      })
+      .catch(error => {
+        console.error('Erreur lors de la suppression:', error)
+        setMessage('Erreur lors de la suppression de l\'employé')
+        setTimeout(() => setMessage(''), 3000)
       })
   }
 
@@ -131,20 +163,113 @@ const Admin: React.FC = () => {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ ...editingEmploye, type: editingEmploye.role })
+      body: JSON.stringify(editingEmploye)
     })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          setMessage('Employé modifié avec succès !')
+          setMessage('Employé mis à jour avec succès !')
           setShowEditForm(false)
           setEditingEmploye(null)
           fetchEmployes()
           setTimeout(() => setMessage(''), 3000)
         } else {
-          setMessage(data.message || 'Erreur lors de la modification')
+          setMessage(data.message || 'Erreur lors de la mise à jour')
         }
       })
+  }
+
+  const handleDiagnosticEmployes = () => {
+    fetch('/api/employes/diagnostic/', {
+      method: 'POST',
+      credentials: 'include'
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('=== DIAGNOSTIC EMPLOYÉS ===')
+        console.log('Total utilisateurs:', data.total_users)
+        console.log('Total employés:', data.total_employes)
+        console.log('Utilisateurs:', data.users)
+        console.log('Managers:', data.managers)
+        console.log('Serveurs:', data.serveurs)
+        console.log('Caissiers:', data.caissiers)
+        console.log('Admins:', data.admins)
+        
+        // Afficher les utilisateurs orphelins (sans profil employé)
+        const user_ids_with_profiles = new Set([
+          ...data.managers.map(m => m.user_id),
+          ...data.serveurs.map(s => s.user_id),
+          ...data.caissiers.map(c => c.user_id),
+          ...data.admins.map(a => a.user_id)
+        ])
+        
+        const orphan_users = data.users.filter(u => !user_ids_with_profiles.has(u.id))
+        if (orphan_users.length > 0) {
+          console.warn('UTILISATEURS ORPHELINS (sans profil employé):', orphan_users)
+          if (confirm(`Attention: ${orphan_users.length} utilisateur(s) orphelin(s) trouvé(s). Voulez-vous les nettoyer maintenant ?`)) {
+            handleNettoyerUtilisateursOrphelins()
+          }
+        } else {
+          alert('Diagnostic terminé: Aucun utilisateur orphelin trouvé.')
+        }
+      })
+      .catch(error => {
+        console.error('Erreur lors du diagnostic:', error)
+        alert('Erreur lors du diagnostic des employés')
+      })
+  }
+
+  const handleNettoyerUtilisateursOrphelins = () => {
+    fetch('/api/employes/nettoyer-orphelins/', {
+      method: 'POST',
+      credentials: 'include'
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert(data.message)
+          fetchEmployes() // Rafraîchir la liste des employés
+        } else {
+          alert('Erreur: ' + data.message)
+        }
+      })
+      .catch(error => {
+        console.error('Erreur lors du nettoyage:', error)
+        alert('Erreur lors du nettoyage des utilisateurs orphelins')
+      })
+  }
+
+  const handleCreerCaissierDefaut = () => {
+    fetch('/api/employes/creer-caissier-defaut/', {
+      method: 'POST',
+      credentials: 'include'
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          alert(data.message + '\nIdentifiants: ' + data.username + ' / ' + data.password)
+          fetchEmployes() // Rafraîchir la liste des employés
+        } else {
+          alert('Erreur: ' + data.message)
+        }
+      })
+      .catch(error => {
+        console.error('Erreur lors de la création du caissier par défaut:', error)
+        alert('Erreur lors de la création du caissier par défaut')
+      })
+  }
+
+  const handleSaveRestaurantSettings = () => {
+    // Sauvegarder les paramètres du restaurant dans localStorage
+    localStorage.setItem('restaurantSettings', JSON.stringify(restaurantSettings))
+    setMessage('Paramètres du restaurant sauvegardés avec succès !')
+    setTimeout(() => setMessage(''), 3000)
+  }
+
+  const handleSaveCaisseSettings = () => {
+    // Simuler la sauvegarde des paramètres de la caisse
+    setMessage('Paramètres de la caisse sauvegardés avec succès !')
+    setTimeout(() => setMessage(''), 3000)
   }
 
   const handleCreateTable = (e: React.FormEvent) => {
@@ -219,7 +344,7 @@ const Admin: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-[100px] py-8">
         {message && (
-          <div className={`mb-4 p-4 rounded-lg ${message.includes('succès') ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+          <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-lg shadow-lg ${message.includes('succès') ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
             {message}
           </div>
         )}
@@ -249,15 +374,33 @@ const Admin: React.FC = () => {
         {/* Gestion des Comptes */}
         {activeTab === 'comptes' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-white">Gestion des Comptes</h2>
-              <button
-                onClick={() => setShowCreateForm(!showCreateForm)}
-                className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity"
-              >
-                <UserPlus className="mr-2" size={20} />
-                {showCreateForm ? 'Annuler' : 'Nouveau Compte'}
-              </button>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Gestion des Employés</h2>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleDiagnosticEmployes}
+                  className="flex items-center px-3 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30"
+                  title="Diagnostic des employés"
+                >
+                  <Settings className="mr-2" size={18} />
+                  Diagnostic
+                </button>
+                <button
+                  onClick={handleCreerCaissierDefaut}
+                  className="flex items-center px-3 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30"
+                  title="Créer le caissier par défaut"
+                >
+                  <CreditCard className="mr-2" size={18} />
+                  Caissier Défaut
+                </button>
+                <button
+                  onClick={() => setShowCreateForm(!showCreateForm)}
+                  className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90"
+                >
+                  <UserPlus className="mr-2" size={18} />
+                  {showCreateForm ? 'Annuler' : 'Ajouter un employé'}
+                </button>
+              </div>
             </div>
 
             {showCreateForm && (
@@ -412,7 +555,7 @@ const Admin: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-card-light">
                   {employes.map((emp) => (
-                    <tr key={`emp-${emp.id}`} className="hover:bg-card-light">
+                    <tr key={`emp-${emp.id}-${emp.role}`} className="hover:bg-card-light">
                       <td className="px-6 py-4 text-white">{emp.nom} {emp.prenom}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -463,14 +606,16 @@ const Admin: React.FC = () => {
                   <label className="block text-sm text-text-gray mb-1">Nom du restaurant</label>
                   <input
                     type="text"
-                    defaultValue="KOOL.MA"
+                    value={restaurantSettings.nom}
+                    onChange={e => setRestaurantSettings({...restaurantSettings, nom: e.target.value})}
                     className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
                   />
                 </div>
                 <div>
                   <label className="block text-sm text-text-gray mb-1">Adresse</label>
                   <textarea
-                    defaultValue="123 Rue de Paris, Casablanca"
+                    value={restaurantSettings.adresse}
+                    onChange={e => setRestaurantSettings({...restaurantSettings, adresse: e.target.value})}
                     className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
                     rows={2}
                   />
@@ -479,11 +624,15 @@ const Admin: React.FC = () => {
                   <label className="block text-sm text-text-gray mb-1">Téléphone</label>
                   <input
                     type="tel"
-                    defaultValue="+212 5XX-XXXXXX"
+                    value={restaurantSettings.telephone}
+                    onChange={e => setRestaurantSettings({...restaurantSettings, telephone: e.target.value})}
                     className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
                   />
                 </div>
-                <button className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity">
+                <button 
+                  onClick={handleSaveRestaurantSettings}
+                  className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
                   Sauvegarder
                 </button>
               </div>
@@ -499,13 +648,18 @@ const Admin: React.FC = () => {
                   <label className="block text-sm text-text-gray mb-1">TVA (%)</label>
                   <input
                     type="number"
-                    defaultValue="20"
+                    value={caisseSettings.tva}
+                    onChange={e => setCaisseSettings({...caisseSettings, tva: parseFloat(e.target.value)})}
                     className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
                   />
                 </div>
                 <div>
                   <label className="block text-sm text-text-gray mb-1">Devise</label>
-                  <select className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white">
+                  <select 
+                    value={caisseSettings.devise}
+                    onChange={e => setCaisseSettings({...caisseSettings, devise: e.target.value})}
+                    className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
+                  >
                     <option value="MAD">MAD (Dirham Marocain)</option>
                     <option value="EUR">EUR (Euro)</option>
                     <option value="USD">USD (Dollar)</option>
@@ -513,11 +667,21 @@ const Admin: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-text-gray">Impression automatique des tickets</span>
-                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-primary">
-                    <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white" />
+                  <button 
+                    onClick={() => setCaisseSettings({...caisseSettings, impressionAuto: !caisseSettings.impressionAuto})}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full ${
+                      caisseSettings.impressionAuto ? 'bg-primary' : 'bg-gray-600'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      caisseSettings.impressionAuto ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
                   </button>
                 </div>
-                <button className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity">
+                <button 
+                  onClick={handleSaveCaisseSettings}
+                  className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90 transition-opacity"
+                >
                   Sauvegarder
                 </button>
               </div>
