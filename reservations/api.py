@@ -1,47 +1,64 @@
 """
-API pour la gestion des réservations (RG12)
+API pour la gestion des reservations (RG12).
 """
 import json
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import get_object_or_404
+
 from django.core.exceptions import ValidationError
-from django.utils import timezone
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
+
+from core.api import get_user_role
 from .models import Reservation
 
 
+def _serialize_reservation(reservation):
+    return {
+        'id': reservation.id,
+        'nom_client': reservation.nom_client,
+        'email': reservation.email,
+        'telephone': reservation.telephone,
+        'date': str(reservation.date),
+        'heure': str(reservation.heure),
+        'nombre_personnes': reservation.nombre_personnes,
+        'notes': reservation.notes,
+        'statut': reservation.statut,
+        'statut_display': reservation.get_statut_display(),
+        'table_id': reservation.table_id,
+        'table_numero': reservation.table.numero if reservation.table else None,
+        'table_capacite': reservation.table.capacite if reservation.table else None,
+    }
+
+
 def api_reservations(request):
-    """API: liste des réservations"""
+    """API: liste des reservations"""
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
-    
-    reservations = []
-    for res in Reservation.objects.all().order_by('date', 'heure'):
-        reservations.append({
-            'id': res.id,
-            'nom_client': res.nom_client,
-            'email': res.email,
-            'telephone': res.telephone,
-            'date': str(res.date),
-            'heure': str(res.heure),
-            'nombre_personnes': res.nombre_personnes,
-            'notes': res.notes,
-            'statut': res.statut,
-            'statut_display': res.get_statut_display(),
-        })
-    
+
+    reservations = [
+        _serialize_reservation(res)
+        for res in Reservation.objects.select_related('table').all().order_by('date', 'heure')
+    ]
     return JsonResponse({'reservations': reservations})
 
 
 @csrf_exempt
 def api_creer_reservation(request):
-    """API: créer une nouvelle réservation (RG12: date passée interdite)"""
+    """API: creer une nouvelle reservation"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
-    # Les réservations peuvent être créées par des visiteurs non connectés (public)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+
+    if get_user_role(request.user) not in ['admin', 'manager']:
+        return JsonResponse({
+            'success': False,
+            'message': 'Seuls les administrateurs et managers peuvent creer des reservations.'
+        }, status=403)
+
     data = json.loads(request.body)
-    
+
     try:
         reservation = Reservation(
             nom_client=data.get('nom_client'),
@@ -51,93 +68,78 @@ def api_creer_reservation(request):
             heure=data.get('heure'),
             nombre_personnes=data.get('nombre_personnes', 2),
             notes=data.get('notes', ''),
+            table_id=data.get('table_id') or None,
+            statut=data.get('statut', 'en_attente'),
         )
-        
-        # RG12: Validation de la date
         reservation.clean()
         reservation.save()
-        
+
         return JsonResponse({
             'success': True,
-            'message': 'Réservation créée avec succès.',
-            'reservation': {
-                'id': reservation.id,
-                'nom_client': reservation.nom_client,
-                'date': str(reservation.date),
-                'heure': str(reservation.heure),
-            }
+            'message': 'Reservation creee avec succes.',
+            'reservation': _serialize_reservation(reservation),
         })
-    except ValidationError as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e),
-        }, status=400)
-    except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'message': str(e),
-        }, status=500)
+    except ValidationError as exc:
+        return JsonResponse({'success': False, 'message': str(exc)}, status=400)
+    except Exception as exc:
+        return JsonResponse({'success': False, 'message': str(exc)}, status=500)
 
 
 @csrf_exempt
 def api_modifier_reservation(request, reservation_id):
-    """API: modifier une réservation (date passée toujours interdite)"""
+    """API: modifier une reservation"""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
-    
-    reservation = get_object_or_404(Reservation, id=reservation_id)
-    data = json.loads(request.body)
-    
-    # Mise à jour des champs
-    if 'nom_client' in data:
-        reservation.nom_client = data['nom_client']
-    if 'email' in data:
-        reservation.email = data['email']
-    if 'telephone' in data:
-        reservation.telephone = data['telephone']
-    if 'date' in data:
-        reservation.date = data['date']
-    if 'heure' in data:
-        reservation.heure = data['heure']
-    if 'nombre_personnes' in data:
-        reservation.nombre_personnes = data['nombre_personnes']
-    if 'statut' in data:
-        reservation.statut = data['statut']
-    if 'notes' in data:
-        reservation.notes = data['notes']
-    
-    try:
-        # RG12: Validation de la date
-        reservation.clean()
-        reservation.save()
-        
-        return JsonResponse({
-            'success': True,
-            'message': 'Réservation modifiée avec succès.',
-        })
-    except ValidationError as e:
+
+    if get_user_role(request.user) not in ['admin', 'manager']:
         return JsonResponse({
             'success': False,
-            'message': str(e),
-        }, status=400)
+            'message': 'Seuls les administrateurs et managers peuvent modifier des reservations.'
+        }, status=403)
+
+    reservation = get_object_or_404(Reservation, id=reservation_id)
+    data = json.loads(request.body)
+
+    for field in ['nom_client', 'email', 'telephone', 'date', 'heure', 'nombre_personnes', 'statut', 'notes']:
+        if field in data:
+            setattr(reservation, field, data[field])
+    if 'table_id' in data:
+        reservation.table_id = data['table_id'] or None
+
+    try:
+        reservation.clean()
+        reservation.save()
+        return JsonResponse({
+            'success': True,
+            'message': 'Reservation modifiee avec succes.',
+            'reservation': _serialize_reservation(reservation),
+        })
+    except ValidationError as exc:
+        return JsonResponse({'success': False, 'message': str(exc)}, status=400)
 
 
 @csrf_exempt
 def api_supprimer_reservation(request, reservation_id):
-    """API: supprimer une réservation"""
+    """API: supprimer une reservation"""
     if request.method != 'DELETE':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
+
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
-    
+
+    if get_user_role(request.user) not in ['admin', 'manager']:
+        return JsonResponse({
+            'success': False,
+            'message': 'Seuls les administrateurs et managers peuvent supprimer des reservations.'
+        }, status=403)
+
     reservation = get_object_or_404(Reservation, id=reservation_id)
     reservation.delete()
-    
+
     return JsonResponse({
         'success': True,
-        'message': 'Réservation supprimée avec succès.',
+        'message': 'Reservation supprimee avec succes.',
     })

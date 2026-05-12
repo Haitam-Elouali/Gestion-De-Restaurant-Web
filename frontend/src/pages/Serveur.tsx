@@ -1,549 +1,499 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Table2, ClipboardList, CheckCircle, X, Clock, LogOut, Plus, User as UserIcon, Menu } from 'lucide-react'
-import { User as UserType } from '../types'
-
-interface Table {
-  id: number
-  numero: string
-  capacite: number
-  statut: string
-  statut_display: string
-  nombre_clients: number
-  commande_actuelle?: {
-    id: number
-    nom_clt: string
-    status: string
-    montant_total: number
-  }
-}
-
-interface Commande {
-  id: number
-  type: string
-  type_display: string
-  nom_clt: string
-  status: string
-  status_display: string
-  montant_total: number
-  lignes: LigneCommande[]
-  table?: Table
-  date_creation: string
-}
-
-interface LigneCommande {
-  id: number
-  plat_id: number
-  plat_nom: string
-  quantite: number
-  prix_unitaire: number
-  montant_ligne: number
-  statut?: string
-}
-
-interface Plat {
-  id: number
-  nom: string
-  description: string
-  prix: number
-  categorie: string
-  disponible: boolean
-}
+import { CheckCircle2, Clock3, LogOut, Plus, Trash2, UtensilsCrossed, XCircle } from 'lucide-react'
+import { fetchAuthStatus, logout } from '../lib/auth'
+import { cn, formatCurrency, formatDateTime } from '../lib/utils'
+import { Commande, Plat, TableSummary, User } from '../types'
 
 const Serveur: React.FC = () => {
-  const [user, setUser] = useState<UserType | null>(null)
-  const [activeTab, setActiveTab] = useState<'tables' | 'commandes'>('tables')
-  const [tables, setTables] = useState<Table[]>([])
+  const [user, setUser] = useState<User | null>(null)
+  const [tables, setTables] = useState<TableSummary[]>([])
   const [commandes, setCommandes] = useState<Commande[]>([])
+  const [plats, setPlats] = useState<Plat[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null)
-  const [showNewOrderForm, setShowNewOrderForm] = useState(false)
+  const [message, setMessage] = useState('')
+  const [editingCommandeId, setEditingCommandeId] = useState<number | null>(null)
   const [newOrder, setNewOrder] = useState({
+    type: 'sur_place_generique',
     table_id: '',
     nom_clt: '',
-    nombre_clients: 2
+    adresse_liv: '',
+    nombre_clients: 2,
   })
-  const [commandesServies, setCommandesServies] = useState<Set<number>>(new Set())
-  const [commandesAnnulees, setCommandesAnnulees] = useState<Set<number>>(new Set())
-  const [plats, setPlats] = useState<Plat[]>([])
-  const [selectedPlats, setSelectedPlats] = useState<{[key: number]: number}>({})
+  const [panier, setPanier] = useState<Record<number, number>>({})
   const navigate = useNavigate()
 
+  const loadData = async () => {
+    setLoading(true)
+    const auth = await fetchAuthStatus()
+    if (!auth.authenticated) {
+      navigate('/login')
+      return
+    }
+    if (auth.role !== 'serveur') {
+      navigate('/login')
+      return
+    }
+    setUser(auth)
+
+    const [tablesRes, commandesRes, platsRes] = await Promise.all([
+      fetch('/api/tables/', { credentials: 'include' }),
+      fetch('/api/commandes/', { credentials: 'include' }),
+      fetch('/api/plats/', { credentials: 'include' }),
+    ])
+    const [tablesData, commandesData, platsData] = await Promise.all([
+      tablesRes.json(),
+      commandesRes.json(),
+      platsRes.json(),
+    ])
+    setTables(tablesData.tables ?? [])
+    setCommandes(commandesData.commandes ?? [])
+    setPlats(platsData.plats ?? [])
+    setLoading(false)
+  }
+
   useEffect(() => {
-    fetch('/api/auth/status/', { credentials: 'include' })
-      .then(res => res.json())
-      .then((data: UserType) => {
-        if (data.authenticated) {
-          if (data.role !== 'serveur') {
-            navigate('/login')
-            return
-          }
-          setUser(data)
-          fetchData()
-        } else {
-          navigate('/login')
-        }
-      })
+    loadData()
+    const interval = window.setInterval(loadData, 30000)
+    return () => window.clearInterval(interval)
   }, [navigate])
 
-  const fetchData = () => {
-    setLoading(true)
-    Promise.all([
-      fetch('/api/tables/', { credentials: 'include' }).then(r => r.json()),
-      fetch('/api/commandes/', { credentials: 'include' }).then(r => r.json()),
-      fetch('/api/plats/', { credentials: 'include' }).then(r => r.json())
-    ]).then(([tablesData, commandesData, platsData]) => {
-      setTables(tablesData.tables || [])
-      setCommandes(commandesData.commandes || [])
-      setPlats(platsData.plats || [])
-      setLoading(false)
-    }).catch(() => setLoading(false))
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login')
   }
 
-  const handleLogout = () => {
-    fetch('/api/auth/logout/', {
-      method: 'POST',
-      credentials: 'include'
-    }).then(() => navigate('/login'))
-  }
+  const selectedItems = Object.entries(panier)
+    .filter(([, quantity]) => quantity > 0)
+    .map(([platId, quantity]) => ({ plat_id: Number(platId), quantite: quantity }))
 
-  const handleCreateOrder = (e: React.FormEvent) => {
-    e.preventDefault()
-    const platIds = Object.keys(selectedPlats)
-      .filter(id => selectedPlats[parseInt(id)] > 0)
-      .map(id => parseInt(id))
-    
-    fetch('/api/commandes/nouvelle/', {
+  const createOrder = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!selectedItems.length) {
+      setMessage('Ajoutez au moins un produit avant validation.')
+      return
+    }
+
+    const payload = {
+      nom_clt: newOrder.nom_clt || (newOrder.table_id ? `Table ${newOrder.table_id}` : 'Client comptoir'),
+      type: newOrder.type,
+      adresse_liv: newOrder.adresse_liv,
+      table_id: newOrder.type === 'sur_place_generique' ? newOrder.table_id || null : null,
+      plats: selectedItems,
+    }
+
+    const response = await fetch('/api/commandes/nouvelle/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        nom_clt: `Table ${newOrder.table_id}`,
-        type: 'sur_place',
-        table_id: newOrder.table_id,
-        plats: platIds.map(id => ({
-          plat_id: id,
-          quantite: selectedPlats[id]
-        }))
-      })
+      body: JSON.stringify(payload),
     })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          if (newOrder.table_id) {
-            fetch(`/api/tables/${newOrder.table_id}/assigner/`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              credentials: 'include',
-              body: JSON.stringify({
-                commande_id: data.commande_id,
-                nombre_clients: newOrder.nombre_clients
-              })
-            }).then(() => {
-              setShowNewOrderForm(false)
-              setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
-              setSelectedPlats({})
-              // Rafraîchir les données pour mettre à jour l'état des tables
-              setTimeout(() => {
-                fetchData()
-              }, 200)
-            })
-          }
-        }
+    const data = await response.json()
+    if (!response.ok || !data.success) {
+      setMessage(data.message || 'Erreur lors de la creation de la commande.')
+      return
+    }
+
+    if (newOrder.type === 'sur_place_generique' && newOrder.table_id) {
+      await fetch(`/api/tables/${newOrder.table_id}/assigner/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          commande_id: data.commande_id,
+          nombre_clients: newOrder.nombre_clients,
+        }),
       })
+    }
+
+    setMessage('Commande creee et transmise en cuisine.')
+    setPanier({})
+    setNewOrder({
+      type: 'sur_place_generique',
+      table_id: '',
+      nom_clt: '',
+      adresse_liv: '',
+      nombre_clients: 2,
+    })
+    await loadData()
   }
+
+  const updateCommandeStatus = async (commandeId: number, statut: 'servie' | 'annulee') => {
+    const response = await fetch(`/api/commandes/${commandeId}/modifier-statut/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ statut }),
+    })
+    const data = await response.json()
+    setMessage(data.message || 'Statut mis a jour.')
+    await loadData()
+  }
+
+  const removeLine = async (lineId: number) => {
+    const response = await fetch(`/api/lignes/${lineId}/supprimer/`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    const data = await response.json()
+    setMessage(data.message || 'Ligne retiree de la commande.')
+    await loadData()
+  }
+
+  const addDishToCommande = async (commandeId: number, platId: number) => {
+    const response = await fetch(`/api/commandes/${commandeId}/ajouter-plat/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ plat_id: platId, quantite: 1 }),
+    })
+    const data = await response.json()
+    setMessage(data.message || 'Plat ajoute a la commande.')
+    await loadData()
+  }
+
+  const activeCommandes = useMemo(
+    () => commandes.filter((commande) => !['payee', 'annulee'].includes(commande.status)),
+    [commandes],
+  )
+
+  const historique = useMemo(
+    () => commandes.filter((commande) => ['payee', 'annulee', 'servie'].includes(commande.status)),
+    [commandes],
+  )
+
+  const availableTables = tables.filter((table) => table.statut === 'libre')
 
   if (loading) {
     return <div className="min-h-screen bg-dark flex items-center justify-center text-white">Chargement...</div>
   }
 
-  const marquerServi = (cmdId: number) => {
-    setCommandesServies(prev => new Set(prev).add(cmdId))
-    setCommandesAnnulees(prev => {
-      const next = new Set(prev)
-      next.delete(cmdId)
-      return next
-    })
-  }
-
-  const annulerCommande = (cmdId: number) => {
-    setCommandesAnnulees(prev => new Set(prev).add(cmdId))
-    setCommandesServies(prev => {
-      const next = new Set(prev)
-      next.delete(cmdId)
-      return next
-    })
-  }
-
-  const supprimerHistorique = () => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer l\'historique des commandes ? Cette action est irréversible.')) {
-      // Appeler l'API pour supprimer toutes les commandes dans la BD
-      fetch('/api/commandes/supprimer-toutes/', {
-        method: 'POST',
-        credentials: 'include'
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            // Vider les états locaux
-            setCommandes([])
-            setCommandesServies(new Set())
-            setCommandesAnnulees(new Set())
-            setSelectedPlats({})
-            setShowNewOrderForm(false)
-            setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
-            alert(data.message)
-          } else {
-            alert('Erreur lors de la suppression: ' + data.message)
-          }
-        })
-        .catch(error => {
-          console.error('Erreur:', error)
-          alert('Erreur lors de la suppression des commandes')
-        })
-    }
-  }
-
-  const libererToutesTables = () => {
-    if (confirm('Êtes-vous sûr de vouloir libérer toutes les tables ? Cette action est irréversible.')) {
-      fetch('/api/commandes/liberer-toutes-tables/', {
-        method: 'POST',
-        credentials: 'include'
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            alert(data.message)
-            fetchData() // Rafraîchir les données pour mettre à jour l'état des tables
-          } else {
-            alert('Erreur lors de la libération: ' + data.message)
-          }
-        })
-        .catch(error => {
-          console.error('Erreur:', error)
-          alert('Erreur lors de la libération des tables')
-        })
-    }
-  }
-
-  const supprimerToutesCommandes = () => {
-    if (confirm('Êtes-vous sûr de vouloir supprimer TOUTES les commandes ? Cette action est irréversible.')) {
-      // Vider toutes les listes de commandes
-      setCommandes([])
-      setCommandesServies(new Set())
-      setCommandesAnnulees(new Set())
-      setSelectedPlats({})
-      setShowNewOrderForm(false)
-      setNewOrder({ table_id: '', nom_clt: '', nombre_clients: 2 })
-    }
-  }
-
-  const commandesEnCours = commandes.filter(c =>
-    c.status !== 'payee' && !commandesServies.has(c.id) && !commandesAnnulees.has(c.id)
-  )
-  // Historique: commandes servies et annulées par le serveur ET les commandes payées
-  const commandesHistory = commandes.filter(c => 
-    commandesServies.has(c.id) || 
-    commandesAnnulees.has(c.id) || 
-    c.status === 'payee'
-  )
-
   return (
     <div className="w-full min-h-screen bg-dark">
-      <nav className="fixed w-full top-0 z-50 bg-dark">
-        <div className="max-w-[1440px] mx-auto px-2">
+      <nav className="fixed w-full top-0 z-50 bg-dark border-b border-card-light">
+        <div className="max-w-[1440px] mx-auto px-4">
           <div className="flex items-center justify-between h-[80px]">
             <a className="flex items-center space-x-2 shrink-0" href="/dashboard">
-              <img src="/logo.png" alt="Logo Restaurant" className="h-[160px] w-auto object-contain brightness-0 invert" />
+              <img src="/logo.png" alt="Logo Restaurant" className="h-[120px] w-auto object-contain brightness-0 invert" />
             </a>
-            <div className="hidden md:flex items-center space-x-3 shrink-0">
-              <div className="flex items-center space-x-2 text-white">
-                <UserIcon size={18} />
-                <span className="text-sm">{user?.username} (Serveur)</span>
-                <button 
-                  onClick={handleLogout}
-                  className="ml-2 text-white hover:text-primary transition-colors" 
-                  title="Déconnexion"
-                >
-                  <LogOut size={16} />
-                </button>
-              </div>
+            <div className="flex items-center gap-4 text-white">
+              <span className="text-sm">{user?.username} (Serveur)</span>
+              <button onClick={handleLogout} className="hover:text-primary transition-colors">
+                <LogOut size={18} />
+              </button>
             </div>
-            <button className="md:hidden text-white">
-              <Menu size={24} />
-            </button>
           </div>
         </div>
       </nav>
 
-      <div className="pt-[100px] p-6">
-        <div className="flex gap-6">
-          {/* Left side - Tables */}
-          <div className="w-1/2 bg-card rounded-xl p-6 border border-card-light">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Visuel Global des Tables</h2>
-              <button
-                onClick={libererToutesTables}
-                className="flex items-center px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded hover:bg-yellow-500/30 transition-colors text-xs"
-                title="Libérer toutes les tables"
-              >
-                <X size={14} className="mr-1" />
-                Libérer toutes
-              </button>
+      <div className="pt-[110px] px-4 pb-16">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {message && (
+            <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-primary">
+              {message}
             </div>
-            
-            {/* Tables Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-              {tables.map((table) => {
-                const statut = table.statut
-                const nombre_clients = table.nombre_clients
-                const statut_display = table.statut_display
-                return (
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
+            <div className="bg-card rounded-2xl border border-card-light p-6">
+              <h1 className="text-3xl font-bold text-white mb-2">Pilotage salle & tables</h1>
+              <p className="text-text-gray text-sm mb-6">Etat temps reel, capacite des tables et ticket associe.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tables.map((table) => (
                   <div
                     key={table.id}
-                    className={`rounded-xl p-4 border-2 cursor-pointer transition-all ${
-                      statut === 'libre' ? 'bg-green-500/10 border-green-500/30 hover:bg-green-500/20' :
-                      statut === 'occupee' ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20' :
-                      'bg-yellow-500/10 border-yellow-500/30 hover:bg-yellow-500/20'
-                    }`}
-                    onClick={() => setSelectedTable(table)}
+                    className={cn(
+                      'rounded-xl border p-4',
+                      table.statut === 'occupee'
+                        ? 'border-red-500/25 bg-red-500/10'
+                        : table.statut === 'reservee'
+                          ? 'border-yellow-500/25 bg-yellow-500/10'
+                          : 'border-green-500/25 bg-green-500/10',
+                    )}
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-lg font-bold text-white">Table {table.numero}</h3>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        statut === 'libre' ? 'bg-green-500/20 text-green-400' :
-                        statut === 'occupee' ? 'bg-red-500/20 text-red-400' :
-                        'bg-yellow-500/20 text-yellow-400'
-                      }`}>
-                        {statut_display}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-semibold">Table {table.numero}</p>
+                        <p className="text-sm text-text-gray mt-1">{table.nombre_clients}/{table.capacite} clients</p>
+                      </div>
+                      <span className="text-xs px-3 py-1 rounded-full bg-dark/40 text-white">
+                        {table.statut_display ?? table.statut}
                       </span>
                     </div>
-                    <div className="text-sm text-text-gray mb-2">
-                      <p>Capacite: {table.capacite} places</p>
-                      <p>Clients: {nombre_clients}/{table.capacite}</p>
-                    </div>
-                    {/* Places visualization */}
-                    <div className="grid grid-cols-4 gap-1">
-                      {Array.from({ length: table.capacite }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`h-6 rounded ${
-                            i < nombre_clients ? 'bg-red-500' : 'bg-green-500/30'
-                          }`}
-                        />
-                      ))}
-                    </div>
+                    {table.commande_actuelle && (
+                      <div className="mt-4 rounded-lg bg-dark/30 p-3 text-sm">
+                        <p className="text-white">Commande #{table.commande_actuelle.id}</p>
+                        <p className="text-text-gray mt-1">{table.commande_actuelle.nom_clt}</p>
+                        <p className="text-primary mt-1">{formatCurrency(table.commande_actuelle.montant_total)}</p>
+                      </div>
+                    )}
                   </div>
-                )
-              })}
+                ))}
+              </div>
             </div>
 
-            {/* New Order Card at bottom */}
-            <div className="bg-card-light rounded-xl p-6 border border-card-light">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-white">Ajouter une Commande</h3>
-                <button
-                  onClick={() => setShowNewOrderForm(!showNewOrderForm)}
-                  className="flex items-center px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90"
-                >
-                  <Plus className="mr-2" size={18} />
-                  {showNewOrderForm ? 'Annuler' : 'Nouvelle Commande'}
-                </button>
-              </div>
+            <div className="bg-card rounded-2xl border border-card-light p-6">
+              <h2 className="text-3xl font-bold text-white mb-2">Nouvelle commande</h2>
+              <p className="text-text-gray text-sm mb-6">Sur place ou a emporter, avec panier editable et assignation de table.</p>
 
-              {showNewOrderForm && (
-                <form onSubmit={handleCreateOrder} className="space-y-4">
-                  <select
+              <form onSubmit={createOrder} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setNewOrder({ ...newOrder, type: 'sur_place_generique' })}
+                    className={cn(
+                      'rounded-xl border px-4 py-3 text-left',
+                      newOrder.type === 'sur_place_generique'
+                        ? 'border-primary bg-primary/10 text-white'
+                        : 'border-card-light bg-card-light text-text-gray',
+                    )}
+                  >
+                    Sur place
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewOrder({ ...newOrder, type: 'a_emporter', table_id: '' })}
+                    className={cn(
+                      'rounded-xl border px-4 py-3 text-left',
+                      newOrder.type === 'a_emporter'
+                        ? 'border-primary bg-primary/10 text-white'
+                        : 'border-card-light bg-card-light text-text-gray',
+                    )}
+                  >
+                    A emporter
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    value={newOrder.nom_clt}
+                    onChange={(event) => setNewOrder({ ...newOrder, nom_clt: event.target.value })}
+                    className="px-4 py-3 bg-card-light border border-card-light rounded-lg text-white"
+                    placeholder="Nom du client"
+                  />
+                  {newOrder.type === 'sur_place_generique' ? (
+                    <select
                       value={newOrder.table_id}
-                      onChange={e => setNewOrder({...newOrder, table_id: e.target.value})}
-                      className="w-full px-4 py-2 bg-card border border-card-light rounded-lg text-white"
+                      onChange={(event) => setNewOrder({ ...newOrder, table_id: event.target.value })}
+                      className="px-4 py-3 bg-card-light border border-card-light rounded-lg text-white"
                       required
                     >
-                      <option value="">Sélectionner une table</option>
-                      {tables.filter(t => t.statut === 'libre').map(t => (
-                        <option key={t.id} value={t.id}>Table {t.numero} (Cap: {t.capacite})</option>
+                      <option value="">Selectionner une table libre</option>
+                      {availableTables.map((table) => (
+                        <option key={table.id} value={table.id}>
+                          Table {table.numero} - {table.capacite} places
+                        </option>
                       ))}
                     </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={newOrder.adresse_liv}
+                      onChange={(event) => setNewOrder({ ...newOrder, adresse_liv: event.target.value })}
+                      className="px-4 py-3 bg-card-light border border-card-light rounded-lg text-white"
+                      placeholder="Reference ou retrait comptoir"
+                    />
+                  )}
+                </div>
+
+                {newOrder.type === 'sur_place_generique' && (
                   <input
                     type="number"
-                    placeholder="Nombre de clients"
+                    min={1}
                     value={newOrder.nombre_clients}
-                    onChange={e => setNewOrder({...newOrder, nombre_clients: parseInt(e.target.value)})}
-                    className="w-full px-4 py-2 bg-card border border-card-light rounded-lg text-white"
-                    min="1"
-                    max={newOrder.table_id ? tables.find(t => t.id === parseInt(newOrder.table_id))?.capacite || 10 : 10}
+                    onChange={(event) => setNewOrder({ ...newOrder, nombre_clients: Number(event.target.value) })}
+                    className="w-full px-4 py-3 bg-card-light border border-card-light rounded-lg text-white"
+                    placeholder="Nombre de clients"
                   />
-                  
-                  {/* Sélection des plats */}
-                  <div className="space-y-2">
-                    <label className="text-white font-medium">Sélectionner les plats:</label>
-                    <div className="max-h-40 overflow-y-auto space-y-2">
-                      {plats.filter(p => p.disponible).length === 0 ? (
-                        <p className="text-text-gray text-sm">Aucun plat disponible</p>
-                      ) : (
-                        plats.filter(p => p.disponible).map(plat => (
-                        <div key={plat.id} className="flex items-center justify-between bg-card-light p-2 rounded">
-                          <div className="flex-1">
-                            <span className="text-white text-sm">{plat.nom}</span>
-                            <span className="text-primary text-xs ml-2">{plat.prix.toFixed(2)} DH</span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const current = selectedPlats[plat.id] || 0
-                                if (current > 0) {
-                                  setSelectedPlats({...selectedPlats, [plat.id]: current - 1})
-                                }
-                              }}
-                              className="w-6 h-6 bg-red-500 text-white rounded flex items-center justify-center text-xs"
-                            >
-                              -
-                            </button>
-                            <span className="text-white w-8 text-center">{selectedPlats[plat.id] || 0}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPlats({...selectedPlats, [plat.id]: (selectedPlats[plat.id] || 0) + 1})
-                              }}
-                              className="w-6 h-6 bg-green-500 text-white rounded flex items-center justify-center text-xs"
-                            >
-                              +
-                            </button>
-                          </div>
+                )}
+
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {plats.filter((plat) => plat.disponible).map((plat) => (
+                    <div key={plat.id} className="flex items-center justify-between rounded-xl bg-card-light p-3">
+                      <div>
+                        <p className="text-white font-medium">{plat.nom}</p>
+                        <p className="text-sm text-text-gray mt-1">{plat.categorie_nom}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-primary font-semibold">{formatCurrency(plat.prix)}</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPanier((current) => ({ ...current, [plat.id]: Math.max((current[plat.id] ?? 0) - 1, 0) }))}
+                            className="w-8 h-8 rounded-lg bg-dark text-white"
+                          >
+                            -
+                          </button>
+                          <span className="w-6 text-center text-white">{panier[plat.id] ?? 0}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPanier((current) => ({ ...current, [plat.id]: (current[plat.id] ?? 0) + 1 }))}
+                            className="w-8 h-8 rounded-lg bg-primary text-white"
+                          >
+                            +
+                          </button>
                         </div>
-                      )))}
+                      </div>
                     </div>
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-card-light bg-card-light p-4">
+                  <div className="flex items-center justify-between text-white">
+                    <span>Total panier</span>
+                    <span className="font-semibold">
+                      {formatCurrency(
+                        plats.reduce((sum, plat) => sum + plat.prix * (panier[plat.id] ?? 0), 0),
+                      )}
+                    </span>
                   </div>
-                  <button
-                    type="submit"
-                    className="w-full px-4 py-2 bg-primary text-white rounded-lg hover:opacity-90"
-                  >
-                    Creer la commande
-                  </button>
-                </form>
-              )}
+                </div>
+
+                <button type="submit" className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:opacity-90">
+                  <Plus size={18} />
+                  Valider la commande
+                </button>
+              </form>
             </div>
           </div>
 
-          {/* Right side - Commandes & Historique */}
-          <div className="w-1/2 bg-card rounded-xl p-6 border border-card-light">
-            <h2 className="text-2xl font-bold text-white mb-6">Commandes Recentes & Historique</h2>
-            
-            {/* Commandes en cours */}
-            <div className="mb-8">
-              <h3 className="text-xl font-semibold text-white mb-4">Commandes en Cours ({commandesEnCours.length})</h3>
+          <div className="grid grid-cols-1 xl:grid-cols-[1.05fr_0.95fr] gap-6">
+            <div className="bg-card rounded-2xl border border-card-light p-6">
+              <h2 className="text-2xl font-bold text-white mb-4">Commandes en cours</h2>
               <div className="space-y-4">
-                {commandesEnCours.map(cmd => (
-                  <div key={cmd.id} className="bg-card-light rounded-xl p-4 border border-card-light">
-                    <div className="flex justify-between items-start">
+                {activeCommandes.map((commande) => (
+                  <div key={commande.id} className="rounded-xl border border-card-light bg-card-light p-4">
+                    <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h4 className="font-medium text-white">Commande #{cmd.id} - {cmd.nom_clt}</h4>
-                        {cmd.table && <p className="text-sm text-primary">Table {cmd.table.numero}</p>}
+                        <p className="text-white font-semibold">Commande #{commande.id} - {commande.nom_clt}</p>
+                        <p className="text-sm text-text-gray mt-1">
+                          {commande.table ? `Table ${commande.table.numero}` : commande.type_display}
+                          {' - '}
+                          {commande.status_display}
+                        </p>
+                        <p className={cn(
+                          'mt-2 text-sm flex items-center gap-2',
+                          (commande.duree_service ?? 0) > 15 ? 'text-red-300' : 'text-text-gray',
+                        )}>
+                          <Clock3 size={14} />
+                          {commande.duree_formatee ?? '0 min'}
+                        </p>
                       </div>
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        cmd.status === 'en_cours' ? 'bg-yellow-500/20 text-yellow-400' :
-                        cmd.status === 'prete' ? 'bg-green-500/20 text-green-400' :
-                        'bg-blue-500/20 text-blue-400'
-                      }`}>
-                        {cmd.status_display}
-                      </span>
+                      <div className="text-right">
+                        <p className="text-primary font-semibold">{formatCurrency(commande.montant_total)}</p>
+                        <button
+                          onClick={() => setEditingCommandeId(editingCommandeId === commande.id ? null : commande.id)}
+                          className="text-sm text-white mt-2 hover:text-primary"
+                        >
+                          {editingCommandeId === commande.id ? 'Fermer' : 'Modifier'}
+                        </button>
+                      </div>
                     </div>
-                    
-                    {cmd.lignes && (
-                      <div className="mt-3 space-y-1">
-                        {cmd.lignes.map((ligne, idx) => (
-                          <div key={idx} className="flex justify-between text-sm">
-                            <span className="text-text-gray">{ligne.plat_nom} x{ligne.quantite}</span>
-                            <span className="text-primary">{ligne.montant_ligne.toFixed(2)} DH</span>
+
+                    <div className="mt-4 space-y-2">
+                      {commande.lignes.map((ligne) => (
+                        <div key={ligne.id} className="flex items-center justify-between rounded-lg bg-dark/30 px-3 py-2">
+                          <div>
+                            <p className="text-white text-sm">{ligne.plat_nom}</p>
+                            <p className="text-xs text-text-gray mt-1">x{ligne.quantite}</p>
                           </div>
-                        ))}
+                          <div className="flex items-center gap-3">
+                            <span className="text-primary text-sm">{formatCurrency(ligne.montant_ligne)}</span>
+                            {commande.status !== 'servie' && (
+                              <button onClick={() => removeLine(ligne.id)} className="text-red-300 hover:text-red-200">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {editingCommandeId === commande.id && commande.status !== 'servie' && (
+                      <div className="mt-4 space-y-2 rounded-xl border border-card-light p-3">
+                        <p className="text-sm font-medium text-white">Ajouter un plat</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {plats.filter((plat) => plat.disponible).slice(0, 8).map((plat) => (
+                            <button
+                              key={plat.id}
+                              type="button"
+                              onClick={() => addDishToCommande(commande.id, plat.id)}
+                              className="inline-flex items-center justify-between rounded-lg bg-card-light border border-card-light px-3 py-2 text-sm text-white"
+                            >
+                              <span>{plat.nom}</span>
+                              <UtensilsCrossed size={14} />
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    
-                    <div className="mt-3 pt-3 border-t border-card-light flex justify-end">
-                      {/* Boutons d'action à droite */}
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => marquerServi(cmd.id)}
-                          className="p-2 text-green-400 hover:text-green-300 transition-colors"
-                          title="Marquer comme servi"
-                        >
-                          <CheckCircle size={18} />
-                        </button>
-                        <button
-                          onClick={() => annulerCommande(cmd.id)}
-                          className="p-2 text-red-400 hover:text-red-300 transition-colors"
-                          title="Annuler"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
+
+                    <div className="mt-4 flex gap-3">
+                      <button
+                        onClick={() => updateCommandeStatus(commande.id, 'servie')}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-500/15 text-green-300 hover:bg-green-500/25"
+                      >
+                        <CheckCircle2 size={16} />
+                        Marquer servie
+                      </button>
+                      <button
+                        onClick={() => updateCommandeStatus(commande.id, 'annulee')}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/15 text-red-300 hover:bg-red-500/25"
+                      >
+                        <XCircle size={16} />
+                        Annuler
+                      </button>
                     </div>
                   </div>
                 ))}
-              </div>
-              
-              {commandesEnCours.length === 0 && (
-                <p className="text-text-gray text-center py-8">Aucune commande en cours</p>
-              )}
-            </div>
-
-            {/* Historique */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-white">Historique ({commandesHistory.length})</h3>
-                {commandesHistory.length > 0 && (
-                  <button
-                    onClick={supprimerHistorique}
-                    className="flex items-center px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors text-xs"
-                    title="Supprimer l'historique"
-                  >
-                    <X size={14} className="mr-1" />
-                    Supprimer l'historique
-                  </button>
+                {activeCommandes.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-card-light p-6 text-center text-text-gray">
+                    Aucune commande active.
+                  </div>
                 )}
               </div>
-              <div className="space-y-2">
-                {commandesHistory.slice(0, 10).map(cmd => (
-                  <div key={cmd.id} className="bg-card-light rounded-lg p-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-white font-medium">#{cmd.id}</span>
-                          <span className="text-text-gray">- {new Date(cmd.date_creation).toLocaleDateString('fr-FR')}</span>
-                        </div>
-                        {cmd.table && <p className="text-sm text-text-gray mt-1">Table {cmd.table.numero}</p>}
-                        {/* Afficher les plats */}
-                        {cmd.lignes && cmd.lignes.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {cmd.lignes.map((ligne, idx) => (
-                              <div key={idx} className="text-xs text-text-gray">
-                                • {ligne.plat_nom} x{ligne.quantite}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+            </div>
+
+            <div className="bg-card rounded-2xl border border-card-light p-6">
+              <h2 className="text-2xl font-bold text-white mb-4">Historique & transmission caisse</h2>
+              <div className="space-y-3 max-h-[780px] overflow-y-auto pr-1">
+                {historique.map((commande) => (
+                  <div key={commande.id} className="rounded-xl border border-card-light bg-card-light p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-white font-semibold">#{commande.id} - {commande.nom_clt}</p>
+                        <p className="text-sm text-text-gray mt-1">{formatDateTime(commande.date_creation)}</p>
+                        <p className="text-sm text-text-gray mt-1">
+                          {commande.table ? `Table ${commande.table.numero}` : commande.type_display}
+                        </p>
                       </div>
-                      {/* Statut */}
-                      <div className="flex flex-col items-end">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          commandesServies.has(cmd.id) ? 'bg-green-500/20 text-green-400' :
-                          commandesAnnulees.has(cmd.id) ? 'bg-red-500/20 text-red-400' :
-                          'bg-yellow-500/20 text-yellow-400'
-                        }`}>
-                          {commandesServies.has(cmd.id) ? 'Servi' :
-                           commandesAnnulees.has(cmd.id) ? 'Annulé' : 'En attente'}
-                        </span>
-                      </div>
+                      <span className={cn(
+                        'px-3 py-1 rounded-full text-xs',
+                        commande.status === 'payee'
+                          ? 'bg-green-500/15 text-green-300'
+                          : commande.status === 'servie'
+                            ? 'bg-blue-500/15 text-blue-300'
+                            : 'bg-red-500/15 text-red-300',
+                      )}>
+                        {commande.status_display}
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      {commande.lignes.map((ligne) => (
+                        <p key={ligne.id} className="text-sm text-text-gray">
+                          {ligne.plat_nom} x{ligne.quantite}
+                        </p>
+                      ))}
                     </div>
                   </div>
                 ))}
+                {historique.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-card-light p-6 text-center text-text-gray">
+                    Aucun historique disponible.
+                  </div>
+                )}
               </div>
-              
-              {commandesHistory.length === 0 && (
-                <p className="text-text-gray text-center py-8">Aucune commande dans l'historique</p>
-              )}
             </div>
           </div>
         </div>

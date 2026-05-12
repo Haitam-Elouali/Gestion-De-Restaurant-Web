@@ -12,7 +12,7 @@ def api_commandes(request):
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
     commandes = []
-    for cmd in Commande.objects.select_related('employe').prefetch_related('lignes__plat').order_by('-date_creation_h'):
+    for cmd in Commande.objects.select_related('employe', 'table').prefetch_related('lignes__plat').order_by('-date_creation_h'):
         lignes = []
         for ligne in cmd.lignes.all():
             lignes.append({
@@ -38,6 +38,13 @@ def api_commandes(request):
             'lignes': lignes,
             'duree_service': cmd.duree_service,
             'duree_formatee': cmd.duree_formatee,
+            'table': {
+                'id': cmd.table.id,
+                'numero': cmd.table.numero,
+                'capacite': cmd.table.capacite,
+                'statut': cmd.table.statut,
+                'nombre_clients': cmd.table.nombre_clients,
+            } if cmd.table else None,
         })
     return JsonResponse({'commandes': commandes})
 
@@ -46,7 +53,7 @@ def api_commande_detail(request, commande_id):
     """API: detail d'une commande"""
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
-    cmd = get_object_or_404(Commande, id=commande_id)
+    cmd = get_object_or_404(Commande.objects.select_related('table'), id=commande_id)
     lignes = []
     for ligne in cmd.lignes.all():
         lignes.append({
@@ -73,6 +80,13 @@ def api_commande_detail(request, commande_id):
         'lignes': lignes,
         'duree_service': cmd.duree_service,
         'duree_formatee': cmd.duree_formatee,
+        'table': {
+            'id': cmd.table.id,
+            'numero': cmd.table.numero,
+            'capacite': cmd.table.capacite,
+            'statut': cmd.table.statut,
+            'nombre_clients': cmd.table.nombre_clients,
+        } if cmd.table else None,
     }
     return JsonResponse(data)
 
@@ -223,6 +237,35 @@ def api_supprimer_ligne(request, ligne_id):
     return JsonResponse({
         'success': True,
         'total': float(cmd.montant_total),
+    })
+
+
+@csrf_exempt
+def api_modifier_quantite_ligne(request, ligne_id):
+    """API: modifier la quantite d'une ligne de commande (POST)"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+
+    ligne = get_object_or_404(LigneDeCommande, id=ligne_id)
+    data = json.loads(request.body)
+    quantite = int(data.get('quantite', 1))
+
+    if quantite < 1:
+        return JsonResponse({
+            'success': False,
+            'message': 'La quantité doit être supérieure à 0.'
+        }, status=400)
+
+    ligne.quantite = quantite
+    ligne.save()
+
+    return JsonResponse({
+        'success': True,
+        'message': 'Quantité mise à jour avec succès.',
+        'total': float(ligne.commande.montant_total),
     })
 
 

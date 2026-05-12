@@ -17,7 +17,7 @@ import Serveur from './pages/Serveur'
 
 const App: React.FC = () => {
   const location = useLocation()
-  const hideNavbarPaths = ['/login', '/caisse', '/admin']
+  const hideNavbarPaths = ['/login', '/caisse', '/admin', '/serveur']
   const hideNavbar = hideNavbarPaths.includes(location.pathname)
 
   return (
