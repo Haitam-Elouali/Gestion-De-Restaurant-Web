@@ -14,23 +14,12 @@ extracted_zip/
 
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.venv
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
 
 # Django
 *.sqlite3
@@ -43,10 +32,13 @@ staticfiles/
 node_modules/
 dist/
 build/
-.DS_Store
+.vite/
 .env
 .env.local
 .env.*.local
+.venv/
+env/
+venv/
 
 # IDE
 .vscode/
@@ -55,5 +47,8 @@ build/
 *.swo
 
 # OS
+.DS_Store
 Thumbs.db
-Desktop.ini
+
+# Logs
+*.log
