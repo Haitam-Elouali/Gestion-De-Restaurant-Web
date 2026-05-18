@@ -1,0 +1,59 @@
+# Documents exclus
+*.docx
+*.pdf
+*.zip
+*.tex
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Dossiers exclus
+extracted_text/
+extracted_zip/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.venv
+
+# Django
+*.sqlite3
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,300 @@
+﻿	
+
+
+
+
+Application web de Gestion de restaurant :
+Cahier de charge
+       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Réalisé par : 
+ELOUALI Haitam
+BENSSERRAR Mohammed Amine
+
+
+
+
+
+
+
+
+
+
+
+
+VERSION AUTEUR DATE D'EDITIONVALIDATEURDATE VALIDATION 
+1.0
+Editeur 
+17-03-2026
+
+
+
+
+
+
+
+
+
+
+
+SOMMAIRE
+
+1. Périmètre .................................................................................................................. 5
+     1.1.  But .............................................................................................................. 5
+     1.2.  Mission ....................................................................................................... 5
+     1.3.  Contraintes ................................................................................................ 6
+     1.4.  Livrables d'entrée ..................................................................................... 6
+     1.5.  Livrables de sortie ..................................................................................... 7
+2.  Etude de l'existant .................................................................................................. 8
+     2.1.  Processus metier ....................................................................................... 8
+     2.1.1.  Accueil et gestion des tables ..................................................... 8
+     2.1.2.  Prise de commande .................................................................... 8
+     2.1.3.  Préparation des commandes .................................................... 9
+     2.1.4.  Service des plats ......................................................................... 9
+     2.1.5.  Facturation et paiement .......................................................... 10
+     2.1.6.  Gestion du stock ....................................................................... 10
+     2.1.7.  Réservations .............................................................................. 10
+     2.1.8.  Suivi et statistiques ................................................................... 11
+3.  Etude fonctionnelle ............................................................................................... 11
+     3.1.  Objectifs fonctionnels ............................................................................ 11
+     3.2.  Besoins fonctionnels ............................................................................... 12
+     3.2.1.  Bloc fonctionnel : Gestion des utilisateurs & Sécurité ......... 12
+     3.2.2.  Bloc fonctionnel : Gestion des tables ..................................... 13
+     3.2.3.  Bloc fonctionnel : Gestion des commandes ........................... 13
+     3.2.4.  Bloc fonctionnel : Gestion de la caisse et des factures ........ 14
+     3.2.5.  Bloc fonctionnel : Gestion des stocks et des menus ............. 15
+     3.2.6.  Bloc fonctionnel : Gestion des réservations .......................... 15
+     3.2.7.  Bloc fonctionnel : Tableau de bord et statistiques ............... 16
+     3.3.  Acteurs ...................................................................................................... 16
+
+
+
+
+
+
+
+
+
+
+
+1. Périmètre
+1.1.	But
+Dans le cadre de la digitalisation de l'établissement, ce projet vise à déployer une application web centralisant l'ensemble des opérations quotidiennes. L'objectif est l'étude, la conception et la réalisation de ce système, avec la technologie JEE.
+Le système cible, couvre les modules fonctionnels suivants :
+* Gestion des utilisateurs
+* Gestion des tables
+* Gestion des commandes
+* Gestion de la caisse
+* Gestion des factures
+* Gestion des stocks
+* Gestion des menus
+* Gestion des reservations
+* Tableau de bord & statistiques
+1.2.	Mission
+* Étude fonctionnelle : Recensement précis des besoins utilisateurs (commandes, tables, stocks) et définition des processus métier du restaurant.
+* Étude technique : Choix de l'architecture logicielle et des technologies adaptées pour garantir la performance du système web.
+* La conception : Élaboration des modèles de données et de l'architecture de l'application (schémas de base de données, maquettage des interfaces pour la caisse et le tableau de bord).
+* La réalisation : Codage effectif des différents modules fonctionnels.
+
+
+1.3.	Contraintes
+* Plateforme de développement : L'application doit être développée sous forme d'une application web, en utilisant des technologies modernes telles que Spring boot pour le backend, et Tailwind / HTML / CSS / JavaScript pour le frontend.
+* Architecture : Le système doit respecter une architecture client/serveur avec une séparation claire entre frontend, backend et la base de données.
+* Base de données : Les données doivent être stockées dans une base relationnelle (MySQL ou PostgreSQL), avec intégrité des données et des sauvegardes régulière.
+* Budget :  Le projet doit être réalisé en respectant les ressources disponibles (humaines et matérielles).
+* Délais : Le projet doit être réalisé dans un délai estimé de 2 à 3 mois.
+
+1.4.	Livrables d'entrée
+LivrableDate livraisonDate livraison réelleEtatCharte graphique Cahier des charges Tableau 1: livrables d'entrée
+
+
+
+
+
+1.5.	Livrables de sortie
+LivrablePhaseDate livraisonAuteurDate validationPlan d'assurance qualité (PAQ) Etude préalable Dossier d'analyse (DSF) Analyse Dossier de conception Conception Dossier Etude technique Etude préalable Module de gestion des commandes Réalisation Module de gestion des clients Réalisation Module de gestion des factures RéalisationManuel d'utilisation Déploiement Manuel technique Déploiement Support Maintenance Tableau 2: livrables de sortie
+
+
+
+
+2.  Etude de l'existant 
+2.1. Processus metier
+2.1.1. Accueil et gestion des tables
+Flux actuel :
+* Le client arrive au restaurant.
+* Le serveur vérifie les tables disponibles.
+* Il assigne une table au client.
+* Il note le nombre de personnes.
+Limites :
+* Pas de visibilité globale des tables.
+* Risque d'erreur dans l'affectation.
+
+2.1.2. Prise de commande
+Flux actuel :
+* Le serveur prend la commande (papier ou mémoire).
+* Il note les plats demandés.
+* Il transmet la commande à la cuisine.
+Limites :
+* Erreurs de saisie.
+* Perte d'informations.
+* Communication lente.
+
+
+
+2.1.3. Préparation des commandes
+Flux actuel :
+* La cuisine reçoit la commande.
+* Les plats sont prepares.
+* Le serveur est informé.
+Limites :
+* Pas de suivi en temps reel.
+* Difficulté de gestion des priorités.
+
+2.1.4. Service des plats
+Flux actuel :
+* Le serveur récupère les plats.
+* Il les sert aux clients.
+Limites :
+* Pas de suivi des plats servis.
+* Risque d'oubli.
+
+
+
+
+
+
+
+2.1.5. Facturation et paiement
+Flux actuel :
+* Le serveur calcule le totale.
+* Le client paie (cash, carte...).
+* Le paiement est enregistré.
+Limites :
+* Erreurs de calcul.
+* Manque de traçabilité.
+
+2.1.6. Gestion du stock
+Flux actuel :
+* Vérification manuelle des ingrédients.
+* Mise à jour approximative.
+Limites :
+* Rupture de stock.
+* Mauvaise estimation.
+
+2.1.7. Réservations
+Flux actuel :
+* Réservations prises par téléphone ou papier.
+* Attribution manuelle des tables.
+Limites :
+* Risque de double réservation.
+2.1.8. Suivi et statistiques
+Flux actuel :
+* Calcul manuel des revenus.
+* Analyse difficile.
+Limites :
+* Pas de vision claire des performances.
+3.  Etude fonctionnelle
+3.1.	Objectifs fonctionnels 
+* Gestion des Utilisateurs & Accès : assurer l'authentification sécurisée et la gestion des profils (Admin, Manager, Serveur) avec un contrôle précis des rôles et permissions.
+* Pilotage de la Salle : suivre l'état des tables en temps réel (libres ou occupées), afficher le nombre de clients par table et assigner précisément chaque commande à son emplacement.
+* Cycle des Commandes : saisir et gérer les commandes en distinguant les modes "sur place" ou "à emporter", tout en assurant le suivi de leur durée et la consultation de l'historique.
+* Administration de l'Offre : effectuer les opérations CRUD (Création, Lecture, Mise à jour, Suppression) sur les menus du restaurant.
+* Maîtrise des Stocks : assurer la gestion et la mise à jour des niveaux d'inventaire pour garantir la disponibilité des produits.
+* Gestion des Réservations : administrer le planning des réservations clients via un module dédié.
+* Encaissement & Facturation : gérer les opérations de caisse, supporter les différents types de paiement (cash, carte bancaire, chèque) et éditer les factures ou justificatifs de vente.
+* Analyse de Performance : générer des statistiques détaillées via un tableau de bord, notamment pour identifier les plats les plus vendus et suivre l'évolution des gains mensuels.
+3.2.	Besoins fonctionnels 
+3.2.1. Bloc fonctionnel : Gestion des utilisateurs & Sécurité
+Le système doit permettre dans ce bloc :
+* La création, consultation, modification et suppression (CRUD) des comptes utilisateurs.
+* L'authentification sécurisée de chaque collaborateur.
+* L'attribution de rôles spécifiques : Serveur, Manager, Administrateur.
+* La gestion des permissions d'accès selon le rôle défini.
+
+Règle de gestionDescriptionTypeRG01Un utilisateur doit obligatoirement être authentifié pour accéder au système.SécuritéRG02Seul l'Administrateur peut créer ou supprimer des comptes "Manager".Métier RG03Le mot de passe doit être crypté en base de données.TechniqueTableau 3: Règle de gestion pour gestion des 
+utilisateur & sécurité
+
+
+
+
+3.2.2. Bloc fonctionnel : Gestion des tables
+Le système doit permettre dans ce bloc :
+* Le suivi en temps réel de l'état des tables (Libre / Occupée).
+* L'affichage du nombre de clients installés par table.
+* La visualisation du détail du ticket pour savoir si les clients sont servis.
+* L'assignation directe d'une commande à une table spécifique.
+
+Règle de gestionDescriptionTypeRG04Une table passe automatiquement à l'état "Occupée" dès qu'une commande lui est assignée.MétierRG05Le nombre de clients par table ne peut excéder la capacité maximale de ladite table.Métier Tableau 4: Règle de gestion pour gestion des 
+tables
+3.2.3. Bloc fonctionnel : Gestion des commandes
+Le système doit permettre dans ce bloc :
+* La saisie des commandes avec distinction du mode : "Sur place" ou "À emporter".
+* Le suivi de la durée de chaque commande depuis sa validation.
+* La consultation de l'historique complet des commandes passées.
+
+
+
+
+Règle de gestionDescriptionTypeRG06Une commande ne peut être validée si aucun produit n'est sélectionné.IHMRG07Le montant de la commande est calculé par la somme des produits (Quantité × Prix unitaire).Métier Tableau 5: Règle de gestion pour gestion des 
+commandes
+
+3.2.4. Bloc fonctionnel : Gestion de la caisse et des factures
+Le système doit permettre dans ce bloc :
+* La gestion des opérations de caisse (ouvertures/fermetures).
+* Le traitement des paiements selon plusieurs types : Cash, Carte Bancaire, Chèque.
+* L'édition et l'impression de la facture ou d'un justificatif de vente.
+
+Règle de gestionDescriptionTypeRG08La facture doit mentionner le mode de paiement utilisé.MétierRG09Une table ne peut être libérée (état "Libre") qu'après la validation du paiement total de la facture.WFTableau 6: Règle de gestion pour gestion de 
+la caisse et des factures
+
+
+
+3.2.5. Bloc fonctionnel : Gestion des stocks et des menus
+Le système doit permettre dans ce bloc :
+* La gestion (CRUD) du catalogue des produits et des menus.
+* Le suivi et la mise à jour des niveaux de stocks.
+
+Règle de gestionDescriptionTypeRG10Toute validation de commande doit entraîner la décrémentation automatique des stocks correspondants.MétierRG11Un produit dont le stock est à zéro doit apparaître comme "Indisponible" sur l'interface de commande.IHMTableau 7: Règle de gestion pour gestion des 
+stocks et des menus
+
+3.2.6. Bloc fonctionnel : Gestion des réservations
+Le système doit permettre dans ce bloc :
+* La saisie et la gestion (CRUD) des réservations clients (nom, date, heure, nombre de personnes).
+
+Règle de gestionDescriptionTypeRG12Une réservation ne peut être enregistrée pour une date passée.MétierTableau 8: Règle de gestion pour gestion des 
+réservations
+
+3.2.7. Bloc fonctionnel : Tableau de bord et statistiques
+Le système doit permettre dans ce bloc :
+* L'affichage des statistiques de vente (ex: les plats les plus vendus).
+* Le suivi des indicateurs financiers (ex: gains mensuels, chiffre d'affaires journalier).
+
+Règle de gestionDescriptionTypeRG13Les statistiques de gains doivent être actualisées en temps réel après chaque clôture de facture.MétierTableau 9: Règle de gestion pour tableau de bord
+et statistiques 
+
+3.3.	Acteurs 
+ActeurRôleAdministrateur- Gérer les comptes
+- Configuration générale de l'applicationManager- Gérer les stocks et menus
+- Accéder au tableau de bord et aux statistiques
+- Gérer les planning clientServeur- Gérer les tables
+- Saisie (sur place/emporter) et suivi de la durée de service
+- Consultation des tickets en coursCaissier- Gérer la caisse
+- Encaissement (cash, CB, chèque) et impression des justificatifs.Tableau 10: Les acteurs
+2
+
+
