@@ -88,9 +88,13 @@ const Caisse: React.FC = () => {
       ? Number(montantRecu) - montantCommande
       : 0;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA");
+  const parseFactureDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString("en-CA") : "";
   const facturesPayeesDuJour = factures.filter(
-    (f) => f.date_paiement?.slice(0, 10) === today && f.statut === "payee",
+    (f) =>
+      f.statut === "payee" &&
+      parseFactureDate(f.date_paiement ?? f.date_facture) === today,
   );
   const soldeTotal = facturesPayeesDuJour.reduce(
     (sum, f) => sum + f.montant_total,

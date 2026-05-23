@@ -109,6 +109,7 @@ def api_employes(request):
     for m in Manager.objects.all():
         managers.append({
             'id': m.id,
+            'user_id': m.user_id,
             'nom': m.nom,
             'prenom': m.prenom,
             'telephone': m.telephone,
@@ -124,6 +125,7 @@ def api_employes(request):
     for s in Serveur.objects.all():
         serveurs.append({
             'id': s.id,
+            'user_id': s.user_id,
             'nom': s.nom,
             'prenom': s.prenom,
             'telephone': s.telephone,
@@ -139,6 +141,7 @@ def api_employes(request):
     for c in Caissier.objects.all():
         caissiers.append({
             'id': c.id,
+            'user_id': c.user_id,
             'nom': c.nom,
             'prenom': c.prenom,
             'telephone': c.telephone,
@@ -154,6 +157,7 @@ def api_employes(request):
     for a in Administrateur.objects.all():
         admins.append({
             'id': a.id,
+            'user_id': a.user_id,
             'nom': a.nom,
             'prenom': a.prenom,
             'telephone': a.telephone,
@@ -241,7 +245,17 @@ def api_create_employe(request):
             if employe_type == 'manager':
                 Manager.objects.create(**common_kwargs)
             elif employe_type == 'serveur':
-                Serveur.objects.create(**common_kwargs)
+                serveur = Serveur.objects.create(**common_kwargs)
+                tables_ids = data.get('tables_ids', [])
+                if isinstance(tables_ids, list) and tables_ids:
+                    tables = Table.objects.filter(id__in=tables_ids)
+                    if tables.count() != len(tables_ids):
+                        raise ValueError('Une ou plusieurs tables sélectionnées sont invalides.')
+                    for table in tables:
+                        if table.serveur_id and table.serveur_id != user.id:
+                            raise ValueError(f'Table {table.numero} est déjà assignée à un autre serveur.')
+                        table.serveur = user
+                        table.save()
             elif employe_type == 'caissier':
                 Caissier.objects.create(**common_kwargs)
             elif employe_type == 'admin':
@@ -291,6 +305,8 @@ def api_delete_employe(request, employe_id):
 
         with transaction.atomic():
             user = employe.user
+            if employe_type == 'serveur' and user is not None:
+                Table.objects.filter(serveur_id=user.id).update(serveur=None)
             employe.delete()
             if user:
                 user.delete()
@@ -475,7 +491,7 @@ def api_tables(request):
         return denied
 
     tables = []
-    for t in Table.objects.all():
+    for t in Table.objects.select_related('serveur').all():
         tables.append({
             'id': t.id,
             'numero': t.numero,
@@ -485,6 +501,8 @@ def api_tables(request):
             'statut_display': t.get_statut_display(),
             'nombre_clients': t.nombre_clients,
             'commande_actuelle_id': t.commande_actuelle.id if t.commande_actuelle else None,
+            'serveur_id': t.serveur_id,
+            'serveur_username': t.serveur.username if t.serveur else None,
         })
 
     return JsonResponse({'tables': tables})
@@ -540,6 +558,8 @@ def api_update_table(request, table_id):
             table.emplacement = data['emplacement'] or ''
         if 'capacite' in data:
             table.capacite = data['capacite']
+        if 'serveur_id' in data:
+            table.serveur_id = data['serveur_id'] if data['serveur_id'] else None
 
         table.save()
         return JsonResponse({'success': True, 'message': 'Table modifiée avec succès.'})
@@ -660,6 +680,19 @@ def api_update_employe(request, employe_id):
                 employe.save()
 
             user.save()
+
+            tables_ids = data.get('tables_ids')
+            if desired_type != 'serveur':
+                Table.objects.filter(serveur_id=user.id).update(serveur=None)
+            elif isinstance(tables_ids, list):
+                candidate_tables = Table.objects.filter(id__in=tables_ids)
+                if candidate_tables.count() != len(tables_ids):
+                    raise ValueError('Une ou plusieurs tables sélectionnées sont invalides.')
+                for table in candidate_tables:
+                    if table.serveur_id and table.serveur_id != user.id:
+                        raise ValueError(f'Table {table.numero} est déjà assignée à un autre serveur.')
+                Table.objects.filter(serveur_id=user.id).exclude(id__in=tables_ids).update(serveur=None)
+                candidate_tables.update(serveur=user)
 
         return JsonResponse({'success': True, 'message': 'Compte mis à jour avec succès.'})
     except Exception as e:

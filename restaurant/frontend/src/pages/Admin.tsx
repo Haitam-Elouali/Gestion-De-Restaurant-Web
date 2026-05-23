@@ -38,6 +38,7 @@ const Admin: React.FC = () => {
     numero: "",
     capacite: 4,
     emplacement: "",
+    serveur_id: "",
   });
   const [employes, setEmployes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +62,7 @@ const Admin: React.FC = () => {
     username: "",
     password: "",
     salaire: "",
+    tables_ids: [] as string[],
   });
   const [message, setMessage] = useState("");
   const navigate = useNavigate();
@@ -144,6 +146,7 @@ const Admin: React.FC = () => {
       ...newEmploye,
       type: newEmploye.role,
       salaire_mensuel: newEmploye.salaire || 0,
+      tables_ids: newEmploye.role === "serveur" ? newEmploye.tables_ids : [],
     };
     fetch("/api/employes/create/", {
       method: "POST",
@@ -165,8 +168,12 @@ const Admin: React.FC = () => {
             username: "",
             password: "",
             salaire: "",
+            tables_ids: [],
           });
-          setTimeout(() => fetchEmployes(), 100);
+          setTimeout(() => {
+            fetchEmployes();
+            fetchTables();
+          }, 100);
           setTimeout(() => setMessage(""), 3000);
         } else {
           setMessage(data.message || "Erreur lors de la création");
@@ -200,8 +207,36 @@ const Admin: React.FC = () => {
   };
 
   const handleEditEmploye = (emp: any) => {
-    setEditingEmploye({ ...emp });
+    const assignedTableIds = tables
+      .filter((table) => table.serveur_id === emp.user_id)
+      .map((table) => String(table.id));
+    setEditingEmploye({ ...emp, tables_ids: assignedTableIds });
     setModalEdit(true);
+  };
+
+  const toggleNewEmployeTable = (tableId: string) => {
+    setNewEmploye((prev) => {
+      const selected = prev.tables_ids.includes(tableId);
+      return {
+        ...prev,
+        tables_ids: selected
+          ? prev.tables_ids.filter((id) => id !== tableId)
+          : [...prev.tables_ids, tableId],
+      };
+    });
+  };
+
+  const toggleEditingEmployeTable = (tableId: string) => {
+    setEditingEmploye((prev: any) => {
+      if (!prev) return prev;
+      const selected = prev.tables_ids?.includes(tableId);
+      return {
+        ...prev,
+        tables_ids: selected
+          ? prev.tables_ids.filter((id: string) => id !== tableId)
+          : [...(prev.tables_ids || []), tableId],
+      };
+    });
   };
 
   const handleUpdateEmploye = (e: React.FormEvent) => {
@@ -219,6 +254,7 @@ const Admin: React.FC = () => {
           setModalEdit(false);
           setEditingEmploye(null);
           fetchEmployes();
+          fetchTables();
           setTimeout(() => setMessage(""), 3000);
         } else {
           setMessage(data.message || "Erreur lors de la mise à jour");
@@ -259,14 +295,19 @@ const Admin: React.FC = () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(newTable),
+      body: JSON.stringify({
+        numero: newTable.numero,
+        capacite: newTable.capacite,
+        emplacement: newTable.emplacement,
+        serveur_id: newTable.serveur_id ? Number(newTable.serveur_id) : null,
+      }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
           setMessage("Table créée avec succès.");
           setModalCreateTable(false);
-          setNewTable({ numero: "", capacite: 4, emplacement: "" });
+          setNewTable({ numero: "", capacite: 4, emplacement: "", serveur_id: "" });
           fetchTables();
           setTimeout(() => setMessage(""), 3000);
         } else {
@@ -866,7 +907,12 @@ const Admin: React.FC = () => {
             <select
               value={newEmploye.role}
               onChange={(e) =>
-                setNewEmploye({ ...newEmploye, role: e.target.value })
+                setNewEmploye({
+                  ...newEmploye,
+                  role: e.target.value,
+                  tables_ids:
+                    e.target.value === "serveur" ? newEmploye.tables_ids : [],
+                })
               }
               className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
             >
@@ -875,6 +921,48 @@ const Admin: React.FC = () => {
               <option value="manager">Manager</option>
               <option value="admin">Administrateur</option>
             </select>
+            {newEmploye.role === "serveur" && (
+              <div className="md:col-span-2">
+                <label className="block text-sm text-text-gray mb-2">
+                  Tables disponibles
+                </label>
+                <div className="grid gap-2 max-h-72 overflow-y-auto rounded-lg border border-card-light p-3 bg-card-light/20">
+                  {tables.map((table) => {
+                    const tableId = String(table.id);
+                    const isAssignedElsewhere =
+                      table.serveur_id && table.serveur_id !== null;
+                    const isChecked = newEmploye.tables_ids.includes(tableId);
+                    return (
+                      <label
+                        key={table.id}
+                        className={`flex items-center justify-between gap-3 rounded-lg p-3 text-white transition-colors ${
+                          isAssignedElsewhere
+                            ? "opacity-60 cursor-not-allowed bg-card"
+                            : "hover:bg-card"
+                        }`}
+                      >
+                        <div className="space-y-1 text-sm">
+                          <div>
+                            Table {table.numero} — {table.capacite} places
+                          </div>
+                          <div className="text-xs text-text-gray">
+                            {table.emplacement || "Sans emplacement"}
+                            {isAssignedElsewhere ? " — assignée" : ""}
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={Boolean(isAssignedElsewhere)}
+                          onChange={() => toggleNewEmployeTable(tableId)}
+                          className="h-4 w-4 rounded border-white text-primary accent-primary"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <input
               type="number"
               placeholder="Salaire mensuel"
@@ -960,7 +1048,12 @@ const Admin: React.FC = () => {
               <select
                 value={editingEmploye.role}
                 onChange={(e) =>
-                  setEditingEmploye({ ...editingEmploye, role: e.target.value })
+                  setEditingEmploye({
+                    ...editingEmploye,
+                    role: e.target.value,
+                    tables_ids:
+                      e.target.value === "serveur" ? editingEmploye.tables_ids : [],
+                  })
                 }
                 className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
               >
@@ -969,6 +1062,54 @@ const Admin: React.FC = () => {
                 <option value="manager">Manager</option>
                 <option value="admin">Administrateur</option>
               </select>
+              {editingEmploye.role === "serveur" && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm text-text-gray mb-2">
+                    Tables disponibles
+                  </label>
+                  <div className="grid gap-2 max-h-72 overflow-y-auto rounded-lg border border-card-light p-3 bg-card-light/20">
+                    {tables.map((table) => {
+                      const tableId = String(table.id);
+                      const isAssignedToCurrent =
+                        table.serveur_id === editingEmploye.user_id;
+                      const isAssignedElsewhere =
+                        table.serveur_id && table.serveur_id !== editingEmploye.user_id;
+                      const isChecked = editingEmploye.tables_ids?.includes(tableId);
+                      return (
+                        <label
+                          key={table.id}
+                          className={`flex items-center justify-between gap-3 rounded-lg p-3 text-white transition-colors ${
+                            isAssignedElsewhere
+                              ? "opacity-60 cursor-not-allowed bg-card"
+                              : "hover:bg-card"
+                          }`}
+                        >
+                          <div className="space-y-1 text-sm">
+                            <div>
+                              Table {table.numero} — {table.capacite} places
+                            </div>
+                            <div className="text-xs text-text-gray">
+                              {table.emplacement || "Sans emplacement"}
+                              {isAssignedToCurrent
+                                ? " — assignée à ce serveur"
+                                : isAssignedElsewhere
+                                ? " — assignée à un autre serveur"
+                                : " — libre"}
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(isChecked)}
+                            disabled={Boolean(isAssignedElsewhere)}
+                            onChange={() => toggleEditingEmployeTable(tableId)}
+                            className="h-4 w-4 rounded border-white text-primary accent-primary"
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <input
                 type="text"
                 placeholder="Nom"
@@ -1131,6 +1272,25 @@ const Admin: React.FC = () => {
               }
               className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
             />
+            <select
+              value={newTable.serveur_id}
+              onChange={(e) =>
+                setNewTable({
+                  ...newTable,
+                  serveur_id: e.target.value,
+                })
+              }
+              className="w-full px-4 py-2 bg-card-light border border-card-light rounded-lg text-white"
+            >
+              <option value="">Sans serveur assigné</option>
+              {employes
+                .filter((emp: any) => emp.role === "serveur")
+                .map((emp: any) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.prenom} {emp.nom}
+                  </option>
+                ))}
+            </select>
           </form>
         </Modal>
 

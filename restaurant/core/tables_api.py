@@ -5,17 +5,40 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
+from django.contrib.auth.models import User
 from .models import Table
 from commandes.models import Commande
 
 
 def api_tables(request):
-    """API: liste des tables avec leur statut"""
+    """API: liste des tables avec leur statut - accessible par serveur et admin"""
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentification requise.'}, status=401)
     
+    # Vérifier le rôle de l'utilisateur
+    user_role = None
+    if hasattr(request.user, 'admin_profile'):
+        user_role = 'admin'
+    elif hasattr(request.user, 'manager_profile'):
+        user_role = 'manager'
+    elif hasattr(request.user, 'serveur_profile'):
+        user_role = 'serveur'
+    elif hasattr(request.user, 'caissier_profile'):
+        user_role = 'caissier'
+    
+    if user_role not in ['admin', 'manager', 'serveur', 'caissier']:
+        return JsonResponse({'error': 'Accès refusé.'}, status=403)
+    
+    # Les serveurs voient uniquement leurs tables ou les tables non assignées
     tables = []
-    for table in Table.objects.all().order_by('numero'):
+    queryset = Table.objects.select_related('serveur').all()
+    
+    # Si c'est un serveur, ne montrer que ses tables assignées
+    if user_role == 'serveur':
+        queryset = queryset.filter(serveur=request.user)
+    
+    for table in queryset.order_by('numero'):
         tables.append({
             'id': table.id,
             'numero': table.numero,
@@ -24,6 +47,8 @@ def api_tables(request):
             'statut': table.statut,
             'statut_display': table.get_statut_display(),
             'nombre_clients': table.nombre_clients or 0,
+            'serveur_id': table.serveur_id,
+            'serveur_username': table.serveur.username if table.serveur else None,
             'commande_actuelle': {
                 'id': table.commande_actuelle.id,
                 'nom_clt': table.commande_actuelle.nom_clt,
@@ -162,6 +187,42 @@ def api_modifier_statut_commande(request, commande_id):
 
 
 @csrf_exempt
+def api_assigner_serveur_table(request, table_id):
+    """API: assigner un serveur à une table - POST"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentification requise.'}, status=401)
+    
+    # Vérifier que c'est un admin
+    if not hasattr(request.user, 'admin_profile'):
+        return JsonResponse({'success': False, 'message': "Seul l'administrateur peut assigner des tables aux serveurs."}, status=403)
+    
+    table = get_object_or_404(Table, id=table_id)
+    data = json.loads(request.body)
+    serveur_id = data.get('serveur_id')
+    
+    if serveur_id:
+        serveur = get_object_or_404(User, id=serveur_id)
+        table.serveur = serveur
+    else:
+        table.serveur = None
+    table.save()
+    
+    return JsonResponse({
+        'success': True,
+        'message': f"Serveur {'assigné' if serveur_id else 'désassigné'} à la table {table.numero}.",
+        'table': {
+            'id': table.id,
+            'numero': table.numero,
+            'serveur_id': table.serveur_id,
+            'serveur_username': table.serveur.username if table.serveur else None,
+        }
+    })
+
+
+@csrf_exempt
 def api_creer_table(request):
     """API: créer une nouvelle table - POST (Admin uniquement)"""
     if request.method != 'POST':
@@ -180,6 +241,7 @@ def api_creer_table(request):
     numero = data.get('numero')
     capacite = data.get('capacite', 4)
     emplacement = data.get('emplacement', '')
+    serveur_id = data.get('serveur_id')
     
     if not numero:
         return JsonResponse({'success': False, 'message': 'Numéro de table requis.'})
@@ -188,7 +250,12 @@ def api_creer_table(request):
     if Table.objects.filter(numero=numero).exists():
         return JsonResponse({'success': False, 'message': f'La table {numero} existe déjà.'})
     
-    table = Table.objects.create(numero=numero, capacite=capacite, emplacement=emplacement or '')
+    table = Table.objects.create(
+        numero=numero,
+        capacite=capacite,
+        emplacement=emplacement or '',
+        serveur_id=serveur_id or None
+    )
     
     return JsonResponse({
         'success': True,
@@ -199,5 +266,6 @@ def api_creer_table(request):
             'emplacement': table.emplacement,
             'capacite': table.capacite,
             'statut': table.statut,
+            'serveur_id': table.serveur_id,
         }
     })

@@ -45,6 +45,7 @@ urlpatterns = [
     path('api/tables/create/', core_tables_api.api_creer_table, name='api_creer_table'),
     path('api/tables/<int:table_id>/assigner/', core_tables_api.api_assigner_table, name='api_assigner_table'),
     path('api/tables/<int:table_id>/liberer/', core_tables_api.api_liberer_table, name='api_liberer_table'),
+    path('api/tables/<int:table_id>/assigner-serveur/', core_tables_api.api_assigner_serveur_table, name='api_assigner_serveur_table'),
 
     path('api/menu/', menus_api.api_menu, name='api_menu'),
     path('api/plats/', menus_api.api_plats, name='api_plats'),

@@ -448,31 +448,20 @@ const Serveur: React.FC = () => {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {tables.map((table) => (
-                    <button
+                    <div
                       key={table.id}
-                      type="button"
                       onClick={() => {
-                        if (
-                          table.statut === "occupee" &&
-                          table.commande_actuelle
-                        ) {
+                        if (table.statut === "occupee" && table.commande_actuelle) {
                           setModalTicket(table);
-                        } else if (table.statut === "libre") {
-                          setNewOrder({
-                            ...newOrder,
-                            table_id: String(table.id),
-                            type: "sur_place_generique",
-                          });
-                          setModalCreateOrder(true);
                         }
                       }}
                       className={cn(
                         "rounded-xl border p-4 text-left transition-opacity hover:opacity-90",
                         table.statut === "occupee"
-                          ? "border-red-500/25 bg-red-500/10"
+                          ? "border-red-500/25 bg-red-500/10 cursor-pointer"
                           : table.statut === "reservee"
-                            ? "border-yellow-500/25 bg-yellow-500/10"
-                            : "border-green-500/25 bg-green-500/10",
+                            ? "border-yellow-500/25 bg-yellow-500/10 cursor-default"
+                            : "border-green-500/25 bg-green-500/10 cursor-default",
                       )}
                     >
                       <div className="flex items-center justify-between">
@@ -500,7 +489,25 @@ const Serveur: React.FC = () => {
                           </p>
                         </div>
                       )}
-                    </button>
+
+                      {/* Bouton dédié 'Nouvelle Commande' — accessible sur toutes les tables */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNewOrder({
+                            ...newOrder,
+                            table_id: String(table.id),
+                            type: "sur_place_generique",
+                          });
+                          setModalCreateOrder(true);
+                        }}
+                        className="mt-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/15 text-primary text-sm hover:bg-primary/25 transition-colors"
+                      >
+                        <Plus size={14} />
+                        Nouvelle Commande
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
