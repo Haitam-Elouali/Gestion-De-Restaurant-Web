@@ -170,6 +170,16 @@ class Table(models.Model):
         related_name='table_assignee',
         verbose_name="Commande actuelle"
     )
+    # ── Serveur assigné à cette table ─────────────────────────────────────────
+    serveur = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tables_assignees',
+        verbose_name="Serveur assigné",
+        help_text="Serveur responsable de cette table. Vide = tous les serveurs peuvent y accéder."
+    )
     
     class Meta:
         verbose_name = "Table"

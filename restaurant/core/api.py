@@ -482,6 +482,7 @@ def api_tables(request):
             'emplacement': t.emplacement,
             'capacite': t.capacite,
             'statut': t.statut,
+            'statut_display': t.get_statut_display(),
             'nombre_clients': t.nombre_clients,
             'commande_actuelle_id': t.commande_actuelle.id if t.commande_actuelle else None,
         })

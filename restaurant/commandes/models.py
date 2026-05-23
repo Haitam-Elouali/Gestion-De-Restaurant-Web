@@ -170,7 +170,8 @@ class LigneDeCommande(models.Model):
         plat_ingredients = PlatIngredient.objects.filter(plat=self.plat)
 
         for plat_ingredient in plat_ingredients:
-            quantite_a_decrementer = plat_ingredient.quantite_necessaire * quantite_reference
+            # Use Decimal arithmetic to avoid Django "DecimalField + float = IllegalMixOfOperations" TypeError
+            quantite_a_decrementer = Decimal(str(plat_ingredient.quantite_necessaire)) * Decimal(str(quantite_reference))
             if not plat_ingredient.ingredient.decrementer_stock(quantite_a_decrementer):
                 self.plat.disponible = False
                 self.plat.save()
